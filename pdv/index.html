@@ -222,21 +222,41 @@
                         style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
                         <i class="fa-solid fa-clock" style="color: #60a5fa;"></i> Horário de Funcionamento
                     </h3>
-                    <p style="font-size:0.83rem; color:var(--color-text-muted); margin-bottom:14px;">Configure os
-                        horários em que a loja aceita pedidos online. Fora do horário, o cardápio do cliente mostrará
-                        "Fechado".</p>
+
+                    <!-- Toggle Abrir/Fechar Loja -->
+                    <div id="store-toggle-panel" class="store-toggle-panel">
+                        <div class="store-toggle-status">
+                            <span id="store-status-icon" class="store-status-icon store-open">
+                                <i class="fa-solid fa-store"></i>
+                            </span>
+                            <div>
+                                <span id="store-status-label" class="store-status-label">Loja Aberta</span>
+                                <span id="store-status-desc" class="store-status-desc">Seguindo horário
+                                    configurado</span>
+                            </div>
+                        </div>
+                        <div class="store-toggle-btns">
+                            <button id="btn-open-store" class="store-toggle-btn store-btn-open active"
+                                onclick="setStoreManual('open')">
+                                <i class="fa-solid fa-door-open"></i> Abrir
+                            </button>
+                            <button id="btn-auto-store" class="store-toggle-btn store-btn-auto"
+                                onclick="setStoreManual('auto')">
+                                <i class="fa-solid fa-clock-rotate-left"></i> Automático
+                            </button>
+                            <button id="btn-close-store" class="store-toggle-btn store-btn-close"
+                                onclick="setStoreManual('close')">
+                                <i class="fa-solid fa-door-closed"></i> Fechar
+                            </button>
+                        </div>
+                    </div>
+
+                    <p style="font-size:0.83rem; color:var(--color-text-muted); margin-bottom:14px; margin-top:16px;">
+                        Configure os horários em que a loja aceita pedidos online (usado no modo Automático).
+                    </p>
 
                     <div id="store-hours-grid" style="display:grid; gap:8px;">
                         <!-- Gerado via JS -->
-                    </div>
-
-                    <div
-                        style="display:flex; align-items:center; gap:12px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border-color);">
-                        <label style="font-size:0.9rem; color:var(--color-text-muted);">
-                            <input type="checkbox" id="store-open-override" onchange="toggleStoreOverride()"
-                                style="margin-right:6px; accent-color:var(--success-color);">
-                            <strong>Override:</strong> Forçar loja como <span id="override-label">ABERTA</span> agora
-                        </label>
                     </div>
 
                     <button class="btn-novo" onclick="saveStoreHours()" style="margin-top: 14px; padding: 8px 15px;">

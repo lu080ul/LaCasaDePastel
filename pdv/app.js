@@ -1260,22 +1260,57 @@ function saveStoreHours() {
     alert('Horários salvos com sucesso!');
 }
 
-function toggleStoreOverride() {
-    const isOverride = document.getElementById('store-open-override')?.checked;
-    const label = document.getElementById('override-label');
-    if (label) label.textContent = isOverride ? 'ABERTA' : 'FECHADA';
+function setStoreManual(mode) {
+    // mode: 'open', 'close', 'auto'
+    localStorage.setItem('lacasa_store_mode', mode);
 
-    localStorage.setItem('lacasa_store_override', isOverride ? 'true' : 'false');
+    // Atualiza botões
+    document.querySelectorAll('.store-toggle-btn').forEach(b => b.classList.remove('active'));
+    const btnMap = { open: 'btn-open-store', auto: 'btn-auto-store', close: 'btn-close-store' };
+    const btn = document.getElementById(btnMap[mode]);
+    if (btn) btn.classList.add('active');
 
+    // Atualiza status visual
+    const icon = document.getElementById('store-status-icon');
+    const label = document.getElementById('store-status-label');
+    const desc = document.getElementById('store-status-desc');
+
+    if (mode === 'open') {
+        if (icon) { icon.className = 'store-status-icon store-open'; icon.innerHTML = '<i class="fa-solid fa-store"></i>'; }
+        if (label) label.textContent = 'Loja Aberta';
+        if (desc) desc.textContent = 'Forçado manualmente — ignorando horário';
+    } else if (mode === 'close') {
+        if (icon) { icon.className = 'store-status-icon store-closed'; icon.innerHTML = '<i class="fa-solid fa-store-slash"></i>'; }
+        if (label) label.textContent = 'Loja Fechada';
+        if (desc) desc.textContent = 'Forçado manualmente — clientes verão "Fechado"';
+    } else {
+        if (icon) { icon.className = 'store-status-icon store-auto'; icon.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i>'; }
+        if (label) label.textContent = 'Modo Automático';
+        if (desc) desc.textContent = 'Seguindo o horário configurado abaixo';
+    }
+
+    // Salva no Firebase
     if (typeof FireDB !== 'undefined') {
-        FireDB.saveSettings({ storeOverride: isOverride }).catch(() => { });
+        FireDB.saveSettings({
+            storeOverride: mode === 'open' ? true : false,
+            storeForceClosed: mode === 'close' ? true : false,
+            storeMode: mode
+        }).catch(() => { });
     }
 }
 
-function isStoreOpen() {
-    const override = localStorage.getItem('lacasa_store_override');
-    if (override === 'true') return true;
+function loadStoreMode() {
+    const mode = localStorage.getItem('lacasa_store_mode') || 'auto';
+    setStoreManual(mode);
+}
 
+function isStoreOpen() {
+    const mode = localStorage.getItem('lacasa_store_mode') || 'auto';
+
+    if (mode === 'open') return true;
+    if (mode === 'close') return false;
+
+    // Modo automático: verifica horário
     const hours = JSON.parse(localStorage.getItem('lacasa_store_hours') || 'null');
     if (!hours) return true; // Se não configurou, assume aberto
 
@@ -1472,6 +1507,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Renderiza grid de horários
     renderStoreHoursGrid();
+    loadStoreMode();
 
     // Carrega override
     const override = localStorage.getItem('lacasa_store_override') === 'true';

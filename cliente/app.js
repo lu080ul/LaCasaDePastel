@@ -26,13 +26,20 @@ async function checkStoreStatus() {
             return;
         }
 
-        // Override manual  
-        if (settings.storeOverride) {
+        // Verifica modo manual (3 estados: open, close, auto)
+        const mode = settings.storeMode || 'auto';
+
+        if (mode === 'open' || settings.storeOverride) {
             setStoreOpen(statusEl, statusText);
             return;
         }
 
-        // Verifica horário
+        if (mode === 'close' || settings.storeForceClosed) {
+            setStoreClosed(statusEl, statusText, closedOverlay, mainContent, settings.storeHours);
+            return;
+        }
+
+        // Modo automático: verifica horário
         const hours = settings.storeHours;
         if (!hours) {
             setStoreOpen(statusEl, statusText);
