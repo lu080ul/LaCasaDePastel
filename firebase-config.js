@@ -16,6 +16,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// Habilita persistência offline (dados salvos no IndexedDB)
+db.enablePersistence({ synchronizeTabs: true })
+    .then(() => console.log('✅ Modo offline habilitado'))
+    .catch(err => {
+        if (err.code === 'failed-precondition') {
+            console.warn('⚠️ Persistência offline não disponível (múltiplas abas abertas)');
+        } else if (err.code === 'unimplemented') {
+            console.warn('⚠️ Navegador não suporta persistência offline');
+        }
+    });
+
 // ============================================================
 // Helpers Firestore
 // ============================================================

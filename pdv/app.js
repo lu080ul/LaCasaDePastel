@@ -1497,4 +1497,40 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
         console.log('Firebase não configurado, trabalhando apenas offline.');
     }
+
+    // Monitora conexão em tempo real
+    initConnectionMonitor();
 });
+
+// ============================================================
+// --- MONITOR DE CONEXÃO ---
+// ============================================================
+
+function initConnectionMonitor() {
+    updateConnectionStatus(navigator.onLine);
+
+    window.addEventListener('online', () => {
+        updateConnectionStatus(true);
+        console.log('🟢 Conexão restaurada — dados serão sincronizados automaticamente.');
+    });
+
+    window.addEventListener('offline', () => {
+        updateConnectionStatus(false);
+        console.log('🔴 Sem conexão — trabalhando no modo offline.');
+    });
+}
+
+function updateConnectionStatus(isOnline) {
+    const el = document.getElementById('conn-status');
+    if (!el) return;
+
+    if (isOnline) {
+        el.className = 'conn-indicator conn-online';
+        el.title = 'Conectado à internet';
+        el.querySelector('.conn-label').textContent = 'Online';
+    } else {
+        el.className = 'conn-indicator conn-offline';
+        el.title = 'Sem conexão — modo offline';
+        el.querySelector('.conn-label').textContent = 'Offline';
+    }
+}

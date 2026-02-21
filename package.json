@@ -1,0 +1,14 @@
+{
+  "name": "la-casa-de-pastel",
+  "version": "1.0.0",
+  "description": "Sistema PDV e Cardápio Online - La Casa de Pastel",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "open": "^10.1.0"
+  }
+}

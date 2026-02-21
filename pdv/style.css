@@ -1336,3 +1336,56 @@ body {
         padding: 5px;
     }
 }
+
+/* --- Indicador de Conexão --- */
+.conn-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-left: 14px;
+    transition: all 0.3s ease;
+}
+
+.conn-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.conn-online {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success-color);
+}
+
+.conn-online .conn-dot {
+    background: var(--success-color);
+    box-shadow: 0 0 6px var(--success-color);
+    animation: conn-pulse 2s infinite;
+}
+
+.conn-offline {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger-color);
+}
+
+.conn-offline .conn-dot {
+    background: var(--danger-color);
+    box-shadow: 0 0 6px var(--danger-color);
+}
+
+@keyframes conn-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
