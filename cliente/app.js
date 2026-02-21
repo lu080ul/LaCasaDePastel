@@ -92,13 +92,31 @@ function setStoreClosed(statusEl, statusText, overlay, main, hours) {
 // ============================================================
 
 async function loadMenu() {
+    const grid = document.getElementById('menu-grid');
+    if (grid) grid.innerHTML = '<div class="loading-menu"><i class="fa-solid fa-spinner fa-spin"></i><p>Carregando cardápio...</p></div>';
+
     try {
-        // Tenta Firebase primeiro
-        menuProducts = await FireDB.loadProducts();
+        console.log('Tentando carregar produtos do Firebase...');
+        const products = await FireDB.loadProducts();
+
+        if (products && products.length > 0) {
+            menuProducts = products;
+            console.log('Produtos carregados do Firebase:', menuProducts.length);
+        } else {
+            console.warn('Firebase retornou zero produtos.');
+            // Tenta fallback local
+            const stored = localStorage.getItem('lacasa_products');
+            if (stored) {
+                menuProducts = JSON.parse(stored);
+                console.log('Usando produtos do localStorage (fallback):', menuProducts.length);
+            }
+        }
     } catch (e) {
-        // Fallback: tenta localStorage (se rodando localmente)
+        console.error('Erro ao acessar Firebase:', e.message);
         const stored = localStorage.getItem('lacasa_products');
-        if (stored) menuProducts = JSON.parse(stored);
+        if (stored) {
+            menuProducts = JSON.parse(stored);
+        }
     }
 
     // Filtra só ativos e com estoque
@@ -143,10 +161,15 @@ function renderMenu(categoryFilter = '') {
         : menuProducts;
 
     if (filtered.length === 0) {
+        const isConfigMissing = firebaseConfig.apiKey.includes('SUA_API_KEY');
         grid.innerHTML = `
             <div class="empty-menu">
                 <i class="fa-solid fa-box-open"></i>
-                <p>Nenhum item disponível</p>
+                <h3>${isConfigMissing ? 'Firebase não configurado' : 'Cardápio em breve'}</h3>
+                <p>${isConfigMissing
+                ? 'O sistema ainda está usando as chaves de exemplo. Por favor, coloque suas chaves reais no arquivo <code>firebase-config.js</code>.'
+                : 'Não encontramos itens ativos no momento. Verifique o estoque no PDV.'}</p>
+                ${isConfigMissing ? '<span class="debug-hint">Dica: Após configurar, use o botão "Sincronizar Cloud" no PDV.</span>' : ''}
             </div>
         `;
         return;

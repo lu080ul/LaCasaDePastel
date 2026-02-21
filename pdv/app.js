@@ -89,16 +89,29 @@ function switchTab(tabId) {
 }
 
 // --- Persistência de Dados (Local Storage via JSON) ---
-function loadData() {
-    // Carregar Produtos
-    const savedProducts = localStorage.getItem('lacasa_products');
-    if (savedProducts) {
-        products = JSON.parse(savedProducts);
-    } else {
-        // Iniciar com estoque zerado
-        products = [];
-        saveProducts();
+async function initProducts() {
+    try {
+        // Tenta carregar do Firebase primeiro
+        const cloudProducts = await FireDB.loadProducts();
+        if (cloudProducts && cloudProducts.length > 0) {
+            products = cloudProducts;
+            localStorage.setItem('lacasa_products', JSON.stringify(products));
+            return;
+        }
+    } catch (e) {
+        console.warn('Firebase offline ou não configurado, usando local storage.');
     }
+
+    const stored = localStorage.getItem('lacasa_products');
+    if (stored) {
+        products = JSON.parse(stored);
+    } else {
+        products = [];
+    }
+}
+
+async function loadData() {
+    await initProducts();
 
     // Carregar Estado do Turno
     const savedShift = localStorage.getItem('lacasa_shift');
@@ -138,8 +151,38 @@ function loadData() {
     updateClosureUI();
 }
 
-function saveProducts() {
+async function saveProducts() {
     localStorage.setItem('lacasa_products', JSON.stringify(products));
+
+    // Sincroniza com Firebase (silenciosamente no background)
+    try {
+        await FireDB.saveAllProducts(products);
+        console.log('Sincronizado com Firebase');
+    } catch (e) {
+        console.warn('Erro ao sincronizar com Firebase:', e);
+    }
+}
+
+async function syncToCloud() {
+    const btn = event?.currentTarget;
+    const originalText = btn ? btn.innerHTML : '';
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sincronizando...';
+    }
+
+    try {
+        await FireDB.saveAllProducts(products);
+        alert('✅ Estoque sincronizado com a nuvem com sucesso!');
+    } catch (e) {
+        alert('❌ Erro ao sincronizar: ' + e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
 }
 
 function saveShiftData() {

@@ -882,6 +882,58 @@ header {
     border-color: var(--color-primary);
 }
 
+/* Fallbacks e Estados de Vazio */
+.loading-menu,
+.empty-menu {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--color-text-muted);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 16px;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.loading-menu i {
+    font-size: 3rem;
+    color: var(--color-primary);
+    margin-bottom: 15px;
+}
+
+.empty-menu i {
+    font-size: 3.5rem;
+    margin-bottom: 20px;
+    opacity: 0.2;
+}
+
+.empty-menu h3 {
+    color: var(--color-text);
+    margin-bottom: 10px;
+}
+
+.empty-menu p {
+    font-size: 0.95rem;
+    max-width: 300px;
+    margin: 0 auto 15px;
+}
+
+.debug-hint {
+    display: inline-block;
+    font-size: 0.8rem;
+    background: rgba(229, 9, 20, 0.1);
+    color: var(--color-primary);
+    padding: 6px 12px;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
