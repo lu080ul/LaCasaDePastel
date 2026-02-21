@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La Casa de Pastel - PDV</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Removido CDN FontAwesome externo para depender menos de internet se cair -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+</head>
+
+<body>
+
+    <!-- Navegação Superior -->
+    <header class="navbar">
+        <div class="logo">
+            <i class="fa-solid fa-store" style="color: #e50914;"></i>
+            <span>La Casa de Pastel</span>
+        </div>
+        <nav class="nav-links">
+            <button class="nav-btn active" onclick="switchTab('caixa')">
+                <i class="fa-solid fa-cash-register"></i> Frente de Caixa
+            </button>
+            <button class="nav-btn" onclick="switchTab('estoque')">
+                <i class="fa-solid fa-boxes-stacked"></i> Estoque
+            </button>
+            <button class="nav-btn" onclick="switchTab('gerenciamento')">
+                <i class="fa-solid fa-gear"></i> Gerenciamento
+            </button>
+        </nav>
+    </header>
+
+    <!-- Área Principal -->
+    <main class="container">
+        <!-- Tab: Frente de Caixa -->
+        <section id="tab-caixa" class="tab-content active">
+            <div class="pos-layout">
+                <!-- Área de Produtos (Esquerda) -->
+                <div class="products-area">
+                    <div class="search-bar">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-product" placeholder="Buscar produto..."
+                            onkeyup="filterProducts()">
+                    </div>
+                    <div class="products-grid" id="pos-products-grid">
+                        <!-- Produtos renderizados via JS -->
+                    </div>
+                </div>
+
+                <!-- Resumo do Pedido / Carrinho (Direita) -->
+                <div class="cart-area">
+                    <div class="cart-header">
+                        <h2>Pedido Atual</h2>
+                        <span class="order-number" id="current-order-number">Senha: #001</span>
+                    </div>
+
+                    <div class="cart-items" id="cart-items">
+                        <!-- Itens do carrinho renderizados via JS -->
+                        <div class="empty-cart-msg">O carrinho está vazio</div>
+                    </div>
+
+                    <div class="cart-summary">
+                        <div class="summary-row total-row" style="margin-bottom: 10px;">
+                            <span>Total (R$):</span>
+                            <span id="cart-total">R$ 0,00</span>
+                        </div>
+                    </div>
+
+                    <!-- Pagamentos e Troco -->
+                    <div class="payments-area">
+                        <h3 class="payments-title">Método de Pagamento</h3>
+                        <div class="payment-methods-grid">
+                            <button class="pay-method-btn" onclick="selectPayment('Dinheiro')"><i
+                                    class="fa-solid fa-money-bill-wave"></i> Dinheiro</button>
+                            <button class="pay-method-btn" onclick="selectPayment('Cartão')"><i
+                                    class="fa-solid fa-credit-card"></i> Cartão</button>
+                            <button class="pay-method-btn" onclick="selectPayment('Pix')"><i
+                                    class="fa-brands fa-pix"></i> Pix</button>
+                            <button class="pay-method-btn" onclick="selectPayment('Outro')"><i
+                                    class="fa-solid fa-ellipsis"></i> Outro</button>
+                        </div>
+
+                        <div id="payment-value-area" class="payment-value-area"
+                            style="display: none; margin-top: 15px;">
+                            <label
+                                style="display:block; margin-bottom:5px; font-size:0.9rem; color:var(--color-text-muted);">Valor
+                                Recebido (R$):</label>
+                            <input type="number" id="pay-amount-input" class="pay-input" min="0" step="0.01"
+                                style="width: 100%; text-align: left;" oninput="updateChange()">
+                        </div>
+
+                        <!-- Dica Pix -->
+                        <div id="pix-payment-hint"
+                            style="display:none; margin-top: 12px; align-items: center; gap: 10px; background: rgba(50,188,173,0.1); border: 1px solid #32bcad; border-radius: 6px; padding: 10px 14px;">
+                            <i class="fa-brands fa-pix" style="color:#32bcad; font-size:1.3rem;"></i>
+                            <span style="font-size:0.88rem; color:#32bcad;">QR Code com valor será gerado ao finalizar a
+                                venda.</span>
+                        </div>
+
+                        <div class="payment-results">
+                            <div class="summary-row" style="margin-bottom: 0;">
+                                <span>Troco:</span>
+                                <span id="cart-change"
+                                    style="color: var(--success-color); font-weight: bold; font-size: 1.2rem;">R$
+                                    0,00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="checkout-actions" id="checkout-actions">
+                        <button class="action-btn cancel-btn" onclick="clearCart()"><i class="fa-solid fa-trash"></i>
+                            Cancelar</button>
+                        <button id="btn-finalizar-venda" class="action-btn confirm-btn" onclick="finalizeSale()"><i
+                                class="fa-solid fa-check"></i> Finalizar Venda</button>
+                    </div>
+
+                    <button id="btn-nova-venda" class="action-btn confirm-btn"
+                        style="display:none; width: 100%; margin-top: 10px; background-color: var(--color-primary);"
+                        onclick="startNewOrder()">
+                        <i class="fa-solid fa-plus"></i> Nova Venda
+                    </button>
+                </div>
+
+                <!-- Painel de Pedidos Online (Terceira Coluna) -->
+                <div class="orders-panel">
+                    <div class="orders-panel-header">
+                        <h2><i class="fa-solid fa-bell"></i> Pedidos Online</h2>
+                        <span id="badge-pedidos" class="notif-badge-inline" style="display:none;">0</span>
+                    </div>
+                    <div id="online-orders-empty" class="orders-empty-state">
+                        <i class="fa-solid fa-inbox"></i>
+                        <p>Nenhum pedido</p>
+                        <span>Pedidos online aparecerão aqui</span>
+                    </div>
+                    <div id="online-orders-list" class="orders-list-scroll">
+                        <!-- Pedidos renderizados via JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Estoque -->
+        <section id="tab-estoque" class="tab-content">
+            <div class="inventory-header">
+                <h2>Gerenciamento de Estoque</h2>
+                <div style="display: flex; gap: 15px; align-items: center; width: 60%;">
+                    <div class="search-bar" style="flex: 1; margin: 0;">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-inventory" placeholder="Pesquisar estoque..."
+                            onkeyup="filterInventory()">
+                    </div>
+                    <button class="btn-novo" onclick="openModal('modal-product')">
+                        <i class="fa-solid fa-plus"></i> Novo Produto
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width:40px; text-align:center;">
+                                <input type="checkbox" id="select-all-inventory" onchange="toggleSelectAll(this)"
+                                    title="Selecionar Todos">
+                            </th>
+                            <th>Nome</th>
+                            <th>Categoria</th>
+                            <th>Preço (R$)</th>
+                            <th>Estoque</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-table-body">
+                        <!-- Itens via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Barra de Ações em Lote -->
+            <div id="bulk-action-bar" class="bulk-action-bar" style="display:none;">
+                <span id="bulk-count">0 selecionado(s)</span>
+                <div class="bulk-actions">
+                    <button onclick="bulkToggleStatus(false)" class="bulk-btn bulk-disable">
+                        <i class="fa-solid fa-eye-slash"></i> Desabilitar
+                    </button>
+                    <button onclick="bulkToggleStatus(true)" class="bulk-btn bulk-enable">
+                        <i class="fa-solid fa-eye"></i> Habilitar
+                    </button>
+                    <button onclick="bulkDelete()" class="bulk-btn bulk-delete">
+                        <i class="fa-solid fa-trash"></i> Excluir
+                    </button>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- Tab: Gerenciamento -->
+        <section id="tab-gerenciamento" class="tab-content">
+            <div class="closure-container">
+                <h2>Gerenciamento do Sistema</h2>
+
+                <!-- Horário de Funcionamento -->
+                <div
+                    style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 20px; margin-bottom: 20px; text-align: left;">
+                    <h3
+                        style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                        <i class="fa-solid fa-clock" style="color: #60a5fa;"></i> Horário de Funcionamento
+                    </h3>
+                    <p style="font-size:0.83rem; color:var(--color-text-muted); margin-bottom:14px;">Configure os
+                        horários em que a loja aceita pedidos online. Fora do horário, o cardápio do cliente mostrará
+                        "Fechado".</p>
+
+                    <div id="store-hours-grid" style="display:grid; gap:8px;">
+                        <!-- Gerado via JS -->
+                    </div>
+
+                    <div
+                        style="display:flex; align-items:center; gap:12px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border-color);">
+                        <label style="font-size:0.9rem; color:var(--color-text-muted);">
+                            <input type="checkbox" id="store-open-override" onchange="toggleStoreOverride()"
+                                style="margin-right:6px; accent-color:var(--success-color);">
+                            <strong>Override:</strong> Forçar loja como <span id="override-label">ABERTA</span> agora
+                        </label>
+                    </div>
+
+                    <button class="btn-novo" onclick="saveStoreHours()" style="margin-top: 14px; padding: 8px 15px;">
+                        <i class="fa-solid fa-floppy-disk"></i> Salvar Horários
+                    </button>
+                </div>
+
+                <!-- Aprovação de Pedidos -->
+                <div
+                    style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; text-align: left;">
+                    <h3
+                        style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                        <i class="fa-solid fa-check-double" style="color: var(--success-color);"></i> Aprovação de
+                        Pedidos Online
+                    </h3>
+                    <p style="font-size:0.83rem; color:var(--color-text-muted); margin-bottom:14px;">
+                        Quando ativado, os pedidos dos clientes são aprovados automaticamente. Quando desligado, cada
+                        pedido precisa ser aprovado manualmente na aba "Pedidos Online".
+                    </p>
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.95rem;">
+                        <input type="checkbox" id="auto-approve-toggle" onchange="saveAutoApprove()"
+                            style="width:18px; height:18px; accent-color:var(--success-color);">
+                        Aprovar pedidos automaticamente
+                    </label>
+                </div>
+
+                <!-- Configurações PIX -->
+                <div class="pix-settings"
+                    style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 20px; margin-bottom: 20px; text-align: left;">
+                    <h3
+                        style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                        <i class="fa-brands fa-pix" style="color: #32bcad;"></i> Configurações PIX
+                    </h3>
+                    <p style="font-size:0.85rem; color:var(--color-text-muted); margin-bottom:15px;">
+                        Ao finalizar uma venda com método <strong>Pix</strong>, o sistema gerará automaticamente um QR
+                        Code com o valor exato do pedido embutido (padrão BR Code do Banco Central).
+                    </p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label
+                                style="display:block; margin-bottom:5px; font-size:0.9rem; color:var(--color-text-muted);">Chave
+                                PIX:</label>
+                            <input type="text" id="pix-key-input" placeholder="Telefone, CPF, E-mail ou Aleatória"
+                                style="width: 100%; padding: 10px; background-color: var(--bg-panel); border: 1px solid var(--border-color); color: white; border-radius: 5px; margin-bottom:0;">
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin-top:12px;">
+                        <div class="form-group">
+                            <label
+                                style="display:block; margin-bottom:5px; font-size:0.9rem; color:var(--color-text-muted);">Nome
+                                do Estabelecimento:</label>
+                            <input type="text" id="pix-merchant-name" placeholder="La Casa de Pastel" maxlength="25"
+                                style="width: 100%; padding: 10px; background-color: var(--bg-panel); border: 1px solid var(--border-color); color: white; border-radius: 5px; margin-bottom:0;">
+                        </div>
+                        <div class="form-group">
+                            <label
+                                style="display:block; margin-bottom:5px; font-size:0.9rem; color:var(--color-text-muted);">Cidade:</label>
+                            <input type="text" id="pix-merchant-city" placeholder="SAO PAULO" maxlength="15"
+                                style="width: 100%; padding: 10px; background-color: var(--bg-panel); border: 1px solid var(--border-color); color: white; border-radius: 5px; margin-bottom:0;">
+                        </div>
+                    </div>
+                    <button class="btn-novo" onclick="savePixKey()" style="margin-top: 14px; padding: 8px 15px;">
+                        <i class="fa-solid fa-floppy-disk"></i> Salvar Configurações
+                    </button>
+                    <div id="pix-qr-container" style="display:none; text-align: center; margin-top: 20px;">
+                        <hr style="border-color: var(--border-color); margin-bottom: 15px; opacity: 0.3;">
+                        <p
+                            style="margin-bottom: 10px; font-weight:bold; color:var(--color-text-muted); font-size:0.85rem;">
+                            Prévia da chave (sem valor):</p>
+                        <img id="pix-qr-img" src="" alt="QR Code PIX"
+                            style="width: 160px; height: 160px; border-radius: 8px; border: 2px solid #32bcad; padding: 5px; background: white; opacity:0.7;">
+                    </div>
+                </div>
+
+                <!-- Histórico de Vendas -->
+                <div class="history-section"
+                    style="margin-top: 30px; border-top: 1px dashed var(--border-color); padding-top: 20px;">
+                    <h3 style="margin-bottom: 15px;"><i class="fa-solid fa-clock-rotate-left"></i> Histórico do Turno
+                        Atual</h3>
+
+                    <!-- Configuração do Cupom -->
+                    <div
+                        style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 20px; margin-bottom: 24px; text-align: left;">
+                        <h3
+                            style="margin-bottom: 6px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                            <i class="fa-solid fa-receipt" style="color: var(--color-primary);"></i> Configuração do
+                            Cupom
+                        </h3>
+                        <p style="font-size:0.83rem; color:var(--color-text-muted); margin-bottom:16px;">Personalize o
+                            cabeçalho e o rodapé do cupom impresso para o cliente.</p>
+
+                        <!-- Toggle Texto / Imagem -->
+                        <label
+                            style="display:block; margin-bottom:8px; font-size:0.85rem; color:var(--color-text-muted);">Tipo
+                            de cabeçalho:</label>
+                        <div
+                            style="display:flex; gap:0; border-radius:7px; overflow:hidden; border:1px solid var(--border-color); width:fit-content; margin-bottom:18px;">
+                            <button id="btn-logo-text" class="logo-toggle-btn logo-toggle-active"
+                                onclick="toggleLogoType('text', true)">
+                                <i class="fa-solid fa-font"></i> Texto
+                            </button>
+                            <button id="btn-logo-image" class="logo-toggle-btn" onclick="toggleLogoType('image', true)">
+                                <i class="fa-solid fa-image"></i> Logo (Imagem)
+                            </button>
+                        </div>
+
+                        <!-- Área Texto -->
+                        <div id="logo-text-area">
+                            <label
+                                style="display:block; margin-bottom:5px; font-size:0.85rem; color:var(--color-text-muted);">Nome
+                                no cupom (em maiúsculas):</label>
+                            <input type="text" id="receipt-name" placeholder="LA CASA DE PASTEL" maxlength="30"
+                                style="width:100%; padding:10px; background:var(--bg-panel); border:1px solid var(--border-color); color:white; border-radius:6px;">
+                        </div>
+
+                        <!-- Área Imagem -->
+                        <div id="logo-image-area" style="display:none;">
+                            <label
+                                style="display:block; margin-bottom:8px; font-size:0.85rem; color:var(--color-text-muted);">Fazer
+                                upload da logo:</label>
+                            <input type="file" id="logo-upload" accept="image/*" onchange="handleLogoUpload(this)"
+                                style="display:block; font-size:0.85rem; color:var(--color-text-muted); margin-bottom:10px;">
+                            <div id="logo-preview-wrap"
+                                style="display:none; margin-top:8px; background:white; width:fit-content; padding:8px 12px; border-radius:6px;">
+                                <img id="logo-preview" src="" alt="Logo preview"
+                                    style="max-height:60px; max-width:200px; object-fit:contain; display:block;">
+                            </div>
+                            <button onclick="removeLogoImage()"
+                                style="margin-top:8px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:var(--danger-color); padding:5px 10px; border-radius:5px; cursor:pointer; font-size:0.8rem;">
+                                <i class="fa-solid fa-trash"></i> Remover imagem
+                            </button>
+                        </div>
+
+                        <!-- Mensagem de Rodapé -->
+                        <div style="margin-top:16px;">
+                            <label
+                                style="display:block; margin-bottom:5px; font-size:0.85rem; color:var(--color-text-muted);">
+                                <i class="fa-solid fa-message" style="font-size:0.75rem;"></i> Mensagem de rodapé
+                                personalizada:
+                            </label>
+                            <textarea id="receipt-footer-msg"
+                                placeholder="Obrigado pela preferência! Siga-nos no @lacasadepastel" rows="3"
+                                style="width:100%; padding:10px; background:var(--bg-panel); border:1px solid var(--border-color); color:white; border-radius:6px; resize:vertical; font-size:0.9rem;"></textarea>
+                        </div>
+
+                        <button class="btn-novo" onclick="saveReceiptConfig()"
+                            style="margin-top:14px; padding:9px 18px;">
+                            <i class="fa-solid fa-floppy-disk"></i> Salvar Configurações do Cupom
+                        </button>
+                    </div>
+
+                    <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Senha</th>
+                                    <th>Total (R$)</th>
+                                    <th>Pagamento</th>
+                                    <th>Opções</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <!-- Preenchido via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="closure-summary" style="margin-top: 30px;">
+                    <div class="stat-card">
+                        <i class="fa-solid fa-receipt stat-icon"></i>
+                        <div class="stat-info">
+                            <span class="stat-title">Vendas Realizadas</span>
+                            <span class="stat-value" id="closure-total-sales">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fa-solid fa-sack-dollar stat-icon"></i>
+                        <div class="stat-info">
+                            <span class="stat-title">Faturamento Total</span>
+                            <span class="stat-value" id="closure-revenue">R$ 0,00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="closure-actions">
+                    <button class="btn-fechar-caixa" onclick="closeRegister()">
+                        <i class="fa-solid fa-lock"></i> Imprimir Relatório e Fechar Caixa
+                    </button>
+                    <p class="closure-warning"><i class="fa-solid fa-triangle-exclamation"></i> Esta ação irá zerar as
+                        vendas do turno e reiniciar a contagem de senhas para o próximo turno.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal Adicionar/Editar Produto -->
+    <div id="modal-product" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('modal-product')">&times;</span>
+            <h2 id="modal-product-title">Adicionar Produto</h2>
+            <form id="product-form" onsubmit="saveProduct(event)">
+                <input type="hidden" id="product-id">
+
+                <div class="form-group">
+                    <label>Nome do Produto:</label>
+                    <input type="text" id="product-name" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Categoria:</label>
+                        <select id="product-category" required>
+                            <option value="Pastéis">Pastéis</option>
+                            <option value="Bebidas">Bebidas</option>
+                            <option value="Porções">Porções</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Ícone (FontAwesome class):</label>
+                        <input type="text" id="product-icon" value="fa-solid fa-utensils">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Preço Venda (R$):</label>
+                        <input type="number" id="product-price" step="0.01" min="0" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Quantidade Estoque:</label>
+                        <input type="number" id="product-stock" min="0" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Cor do Cartão (Hex/Nome):</label>
+                    <input type="color" id="product-color" value="#2d2d2d">
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="action-btn cancel-btn"
+                        onclick="closeModal('modal-product')">Cancelar</button>
+                    <button type="submit" class="action-btn confirm-btn">Salvar Produto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Genérico de Confirmação -->
+    <div id="modal-confirm"
+        style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center;">
+        <div
+            style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:12px; padding:32px; max-width:460px; width:90%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div id="modal-confirm-icon" style="font-size:2.5rem; margin-bottom:16px;">⚠️</div>
+            <h2 id="modal-confirm-title" style="margin-bottom:10px; font-size:1.25rem;"></h2>
+            <p id="modal-confirm-msg"
+                style="color:var(--color-text-muted); font-size:0.92rem; line-height:1.5; margin-bottom:24px;"></p>
+            <div style="display:flex; gap:12px; justify-content:center;">
+                <button id="modal-confirm-cancel-btn" onclick="modalConfirmCancel()"
+                    style="padding:10px 24px; border-radius:7px; border:1px solid var(--border-color); background:var(--bg-dark); color:var(--color-text); cursor:pointer; font-size:0.95rem;">
+                    Cancelar
+                </button>
+                <button id="modal-confirm-ok-btn" onclick="modalConfirmOk()"
+                    style="padding:10px 24px; border-radius:7px; border:none; background:var(--danger-color); color:white; cursor:pointer; font-weight:700; font-size:0.95rem;">
+                    Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Container Oculto para Impressão -->
+    <div id="print-area" class="print-area">
+        <!-- Conteúdo injetado via JS (Cupom ou Comanda) -->
+    </div>
+
+    <!-- Scripts -->
+    <script src="../firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

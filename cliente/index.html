@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La Casa de Pastel - Cardápio Online</title>
+    <meta name="description"
+        content="Faça seu pedido online na La Casa de Pastel. Pastéis, bebidas e porções com entrega, retirada ou consumo no local.">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-inner">
+            <div class="brand">
+                <i class="fa-solid fa-store brand-icon"></i>
+                <div>
+                    <h1>La Casa de Pastel</h1>
+                    <div id="store-status" class="status-badge status-loading">
+                        <span class="status-dot"></span>
+                        <span id="status-text">Verificando...</span>
+                    </div>
+                </div>
+            </div>
+            <button class="cart-btn" onclick="openCart()">
+                <i class="fa-solid fa-bag-shopping"></i>
+                <span id="cart-badge" class="cart-badge" style="display:none;">0</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Store Closed Overlay -->
+    <div id="store-closed" class="store-closed" style="display:none;">
+        <div class="closed-content">
+            <i class="fa-solid fa-moon closed-icon"></i>
+            <h2>Estamos Fechados</h2>
+            <p id="closed-hours-msg">Confira nosso horário de funcionamento:</p>
+            <div id="closed-hours-list" class="hours-list"></div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <!-- Category Tabs -->
+        <div class="category-tabs" id="category-tabs">
+            <button class="cat-tab active" onclick="filterCategory('todos')">🍽️ Todos</button>
+        </div>
+
+        <!-- Products Grid -->
+        <section class="menu-grid" id="menu-grid">
+            <!-- Rendered via JS -->
+        </section>
+    </main>
+
+    <!-- Cart Drawer -->
+    <div id="cart-overlay" class="cart-overlay" onclick="closeCart()"></div>
+    <aside id="cart-drawer" class="cart-drawer">
+        <div class="cart-header">
+            <h2><i class="fa-solid fa-bag-shopping"></i> Seu Pedido</h2>
+            <button class="close-cart-btn" onclick="closeCart()">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="cart-items" id="client-cart-items">
+            <div class="empty-cart">
+                <i class="fa-solid fa-basket-shopping empty-icon"></i>
+                <p>Seu carrinho está vazio</p>
+                <span>Adicione itens do cardápio</span>
+            </div>
+        </div>
+        <div class="cart-footer" id="cart-footer" style="display:none;">
+            <div class="cart-total">
+                <span>Total</span>
+                <span id="client-cart-total">R$ 0,00</span>
+            </div>
+            <button class="checkout-btn" onclick="goToCheckout()">
+                Finalizar Pedido <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Checkout Modal -->
+    <div id="checkout-modal" class="modal-overlay" style="display:none;">
+        <div class="checkout-content">
+            <button class="close-modal" onclick="closeCheckout()"><i class="fa-solid fa-xmark"></i></button>
+            <h2>Finalizar Pedido</h2>
+
+            <!-- Tipo do Pedido -->
+            <div class="checkout-section">
+                <label class="section-label">Tipo do Pedido</label>
+                <div class="tipo-grid">
+                    <button class="tipo-btn active" onclick="selectTipo('retirada')" data-tipo="retirada">
+                        <i class="fa-solid fa-store"></i>
+                        <span>Retirada</span>
+                    </button>
+                    <button class="tipo-btn" onclick="selectTipo('entrega')" data-tipo="entrega">
+                        <i class="fa-solid fa-motorcycle"></i>
+                        <span>Entrega</span>
+                    </button>
+                    <button class="tipo-btn" onclick="selectTipo('local')" data-tipo="local">
+                        <i class="fa-solid fa-utensils"></i>
+                        <span>No Local</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Endereço (só entrega) -->
+            <div id="endereco-section" class="checkout-section" style="display:none;">
+                <label class="section-label">Endereço de Entrega</label>
+                <input type="text" id="endereco-input" class="checkout-input" placeholder="Rua, número, bairro...">
+            </div>
+
+            <!-- Mesa (só local) -->
+            <div id="mesa-section" class="checkout-section" style="display:none;">
+                <label class="section-label">Número da Mesa (opcional)</label>
+                <input type="text" id="mesa-input" class="checkout-input" placeholder="Ex: Mesa 5">
+            </div>
+
+            <!-- Contato -->
+            <div class="checkout-section">
+                <label class="section-label">Seu Nome</label>
+                <input type="text" id="nome-input" class="checkout-input" placeholder="Seu nome" required>
+            </div>
+            <div class="checkout-section">
+                <label class="section-label">WhatsApp</label>
+                <input type="tel" id="whatsapp-input" class="checkout-input" placeholder="(11) 99999-9999" required>
+            </div>
+
+            <!-- Pagamento -->
+            <div class="checkout-section">
+                <label class="section-label">Pagamento</label>
+                <div class="pay-grid">
+                    <button class="pay-btn active" onclick="selectPay('Dinheiro')" data-pay="Dinheiro">
+                        <i class="fa-solid fa-money-bill-wave"></i> Dinheiro
+                    </button>
+                    <button class="pay-btn" onclick="selectPay('Pix')" data-pay="Pix">
+                        <i class="fa-brands fa-pix"></i> Pix
+                    </button>
+                    <button class="pay-btn" onclick="selectPay('Cartão')" data-pay="Cartão">
+                        <i class="fa-solid fa-credit-card"></i> Cartão
+                    </button>
+                </div>
+            </div>
+
+            <!-- Troco -->
+            <div id="troco-section" class="checkout-section">
+                <label class="section-label">Precisa de troco para quanto?</label>
+                <input type="number" id="troco-input" class="checkout-input" placeholder="Ex: 50" min="0" step="0.01">
+            </div>
+
+            <!-- Resumo -->
+            <div class="checkout-section checkout-summary">
+                <div class="summary-line">
+                    <span>Itens</span>
+                    <span id="checkout-subtotal">R$ 0,00</span>
+                </div>
+                <div class="summary-line" id="taxa-line" style="display:none;">
+                    <span>Taxa de entrega</span>
+                    <span id="checkout-taxa">R$ 0,00</span>
+                </div>
+                <div class="summary-line total">
+                    <span>Total</span>
+                    <span id="checkout-total">R$ 0,00</span>
+                </div>
+            </div>
+
+            <button class="submit-order-btn" onclick="submitOrder()">
+                <i class="fa-solid fa-paper-plane"></i> Enviar Pedido
+            </button>
+        </div>
+    </div>
+
+    <!-- Order Tracking -->
+    <div id="tracking-modal" class="modal-overlay" style="display:none;">
+        <div class="tracking-content">
+            <div class="tracking-header">
+                <i class="fa-solid fa-circle-check tracking-icon"></i>
+                <h2>Pedido Enviado!</h2>
+                <p id="tracking-order-id" class="tracking-id"></p>
+            </div>
+            <div class="tracking-steps" id="tracking-steps">
+                <!-- Rendered via JS -->
+            </div>
+            <p class="tracking-msg" id="tracking-msg">Aguardando confirmação da loja...</p>
+            <button class="new-order-btn" onclick="resetToMenu()">
+                <i class="fa-solid fa-plus"></i> Novo Pedido
+            </button>
+        </div>
+    </div>
+
+    <script src="../firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
