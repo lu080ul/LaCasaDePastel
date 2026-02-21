@@ -1525,29 +1525,97 @@ function updateOrderStatus(orderId, newStatus) {
 }
 
 function startOrdersListener() {
-    if (typeof FireDB === 'undefined' || !db) return;
+    if (typeof FireDB === 'undefined' || !db) {
+        console.warn('startOrdersListener: FireDB ou db não disponível');
+        return;
+    }
+
+    console.log('🔔 Iniciando listener de pedidos...');
 
     let firstLoad = true;
-    FireDB.onNewOrders((orders) => {
-        const pendingCount = orders.filter(o => o.status === 'pendente').length;
 
-        // Notifica novo pedido (não no primeiro carregamento)
-        if (!firstLoad && pendingCount > 0) {
-            playNotificationSound();
-        }
-        firstLoad = false;
+    try {
+        const unsubscribe = FireDB.onNewOrders((orders) => {
+            console.log(`📦 Pedidos recebidos: ${orders.length} pedido(s)`);
 
-        // Badge inline no painel
-        const badge = document.getElementById('badge-pedidos');
-        if (badge && pendingCount > 0) {
-            badge.textContent = pendingCount;
-            badge.style.display = 'inline-block';
-        } else if (badge) {
-            badge.style.display = 'none';
-        }
+            const pendingCount = orders.filter(o => o.status === 'pendente').length;
 
-        renderOnlineOrders(orders);
-    });
+            // Notifica novo pedido (não no primeiro carregamento)
+            if (!firstLoad && pendingCount > 0) {
+                playNotificationSound();
+            }
+            firstLoad = false;
+
+            // Badge inline no painel
+            const badge = document.getElementById('badge-pedidos');
+            if (badge && pendingCount > 0) {
+                badge.textContent = pendingCount;
+                badge.style.display = 'inline-block';
+            } else if (badge) {
+                badge.style.display = 'none';
+            }
+
+            renderOnlineOrders(orders);
+        });
+
+        console.log('✅ Listener de pedidos ativo');
+    } catch (e) {
+        console.error('❌ Erro ao iniciar listener:', e);
+
+        // Fallback: polling a cada 15 segundos
+        console.log('🔄 Usando polling como fallback...');
+        setInterval(async () => {
+            try {
+                const snap = await db.collection('orders')
+                    .where('status', 'in', ['pendente', 'aprovado', 'preparando', 'pronto'])
+                    .get();
+                const orders = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                orders.sort((a, b) => {
+                    const tA = a.createdAt?.toMillis?.() || 0;
+                    const tB = b.createdAt?.toMillis?.() || 0;
+                    return tB - tA;
+                });
+                renderOnlineOrders(orders);
+
+                const pendingCount = orders.filter(o => o.status === 'pendente').length;
+                const badge = document.getElementById('badge-pedidos');
+                if (badge && pendingCount > 0) {
+                    badge.textContent = pendingCount;
+                    badge.style.display = 'inline-block';
+                } else if (badge) {
+                    badge.style.display = 'none';
+                }
+            } catch (err) {
+                console.warn('Polling erro:', err.message);
+            }
+        }, 15000);
+    }
+}
+
+// Função de teste: cria um pedido e verifica se chega
+async function testOrderFlow() {
+    if (typeof FireDB === 'undefined') {
+        alert('FireDB não disponível');
+        return;
+    }
+
+    try {
+        const testOrder = {
+            items: [{ name: 'TESTE - Pastel de Queijo', price: 10.00, qty: 1 }],
+            total: 10.00,
+            tipo: 'retirada',
+            pagamento: 'Dinheiro',
+            contato: 'Teste - (00) 00000-0000',
+            nome: 'Pedido Teste',
+            whatsapp: '00000000000',
+            status: 'pendente'
+        };
+
+        const orderId = await FireDB.createOrder(testOrder);
+        alert('✅ Pedido teste criado com ID: ' + orderId + '\n\nSe o listener estiver funcionando, ele aparecerá no painel de Pedidos Online em alguns segundos.');
+    } catch (e) {
+        alert('❌ Erro ao criar pedido teste: ' + e.message);
+    }
 }
 
 // ============================================================
