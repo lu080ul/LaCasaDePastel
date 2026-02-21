@@ -540,8 +540,22 @@ function resetToMenu() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
+        // Garante visibilidade global explícita
+        window.FireDB = FireDB;
+        window.db = db;
+
         await checkStoreStatus();
         await loadMenu();
+
+        // Inicia listener de mudanças nos produtos para manter cardápio atualizado
+        if (typeof FireDB !== 'undefined' && db) {
+            FireDB.onProductsChange((updatedProds) => {
+                console.log('🔄 Cardápio atualizado via Firebase');
+                menuProducts = updatedProds.filter(p => p.active !== false && p.stock > 0);
+                renderCategoryTabs();
+                renderMenu(getCurrentCategory());
+            });
+        }
     } catch (e) {
         console.error('Error initializing:', e);
         // Try loading from localStorage as fallback

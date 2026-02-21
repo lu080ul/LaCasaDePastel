@@ -89,6 +89,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Inicia listener de pedidos online (se Firebase configurado)
     try {
         if (typeof FireDB !== 'undefined' && firebaseConfig.apiKey !== 'SUA_API_KEY_AQUI') {
+            // Garante visibilidade global explícita
+            window.FireDB = FireDB;
+            window.db = db;
+
             startOrdersListener();
 
             FireDB.onSettingsChange((settings) => {

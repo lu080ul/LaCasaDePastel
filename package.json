@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "express": "^4.18.2",
+    "firebase": "^9.23.0",
     "open": "^10.1.0"
   }
 }
