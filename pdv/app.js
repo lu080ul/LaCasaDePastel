@@ -649,9 +649,9 @@ function renderInventory(filterText = '') {
                 </span>
             </td>
             <td>
-                <i class="fa-solid fa-pen-to-square action-icon" onclick="editProduct(${p.id})" title="Editar Produto"></i>
-                <i class="fa-solid ${isActive ? 'fa-eye-slash' : 'fa-eye'} action-icon" onclick="toggleProductStatus(${p.id})" title="${isActive ? 'Desabilitar Venda' : 'Habilitar Venda'}"></i>
-                <i class="fa-solid fa-trash action-icon delete" onclick="deleteProduct(${p.id})" title="Excluir Definitivo"></i>
+                <i class="fa-solid fa-pen-to-square action-icon" onclick="editProduct('${p.id}')" title="Editar Produto"></i>
+                <i class="fa-solid ${isActive ? 'fa-eye-slash' : 'fa-eye'} action-icon" onclick="toggleProductStatus('${p.id}')" title="${isActive ? 'Desabilitar Venda' : 'Habilitar Venda'}"></i>
+                <i class="fa-solid fa-trash action-icon delete" onclick="deleteProduct('${p.id}')" title="Excluir Definitivo"></i>
             </td>
         `;
         tbody.appendChild(tr);
@@ -696,7 +696,7 @@ function updateBulkBar() {
 }
 
 function getSelectedIds() {
-    return Array.from(document.querySelectorAll('.inventory-checkbox:checked')).map(cb => parseInt(cb.value));
+    return Array.from(document.querySelectorAll('.inventory-checkbox:checked')).map(cb => String(cb.value));
 }
 
 function bulkToggleStatus(activate) {
@@ -712,7 +712,7 @@ function bulkToggleStatus(activate) {
         btnColor: activate ? 'var(--success-color)' : 'var(--warning-color, #f59e0b)',
         onConfirm: () => {
             ids.forEach(id => {
-                const p = products.find(prod => prod.id === id);
+                const p = products.find(prod => String(prod.id) === String(id));
                 if (p) p.active = activate;
             });
             saveProducts();
@@ -733,7 +733,7 @@ function bulkDelete() {
         msg: `Tem certeza que deseja excluir DEFINITIVAMENTE ${ids.length} produto(s) do sistema? Esta ação não pode ser desfeita.\n\nDica: Você pode desabilitar os produtos em vez de excluí-los.`,
         btnText: 'Excluir Todos',
         onConfirm: () => {
-            products = products.filter(p => !ids.includes(p.id));
+            products = products.filter(p => !ids.includes(String(p.id)));
             saveProducts();
             const text = document.getElementById('search-inventory')?.value || '';
             renderInventory(text);
@@ -743,7 +743,8 @@ function bulkDelete() {
 }
 
 function toggleProductStatus(id) {
-    const p = products.find(prod => prod.id === id);
+    const pid = String(id);
+    const p = products.find(prod => String(prod.id) === pid);
     if (!p) return;
 
     // Alterna o status
@@ -788,7 +789,7 @@ function saveProduct(e) {
 
     if (id) {
         // Edit
-        const index = products.findIndex(p => p.id == id);
+        const index = products.findIndex(p => String(p.id) == String(id));
         if (index > -1) {
             products[index] = { ...products[index], ...productData };
         }
@@ -805,7 +806,8 @@ function saveProduct(e) {
 }
 
 function editProduct(id) {
-    const p = products.find(prod => prod.id === id);
+    const pid = String(id);
+    const p = products.find(prod => String(prod.id) === pid);
     if (!p) return;
 
     document.getElementById('product-id').value = p.id;
@@ -830,7 +832,8 @@ function deleteProduct(id) {
         msg: 'Tem certeza que deseja excluir DEFINITIVAMENTE este produto do sistema?\n\nDica: Você pode apenas clicar no ícone do olho para desabilitá-lo momentaneamente e ocultá-lo das vendas sem perder seu histórico e cadastro.',
         btnText: 'Excluir',
         onConfirm: () => {
-            products = products.filter(p => p.id !== id);
+            const pid = String(id);
+            products = products.filter(p => String(p.id) !== pid);
             saveProducts();
             const text = document.getElementById('search-inventory')?.value || '';
             renderInventory(text);
