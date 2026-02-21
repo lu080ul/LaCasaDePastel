@@ -22,7 +22,6 @@ async function checkStoreStatus() {
     try {
         const settings = await FireDB.loadSettings();
         if (!settings) {
-            // Sem settings = assume aberto
             setStoreOpen(statusEl, statusText);
             return;
         }
@@ -57,19 +56,19 @@ async function checkStoreStatus() {
             setStoreClosed(statusEl, statusText, closedOverlay, mainContent, hours);
         }
     } catch (e) {
-        // Firebase não configurado — mostra aberto
+        console.warn('Erro ao verificar status da loja:', e.message);
         setStoreOpen(statusEl, statusText);
     }
 }
 
 function setStoreOpen(statusEl, statusText) {
-    statusEl.className = 'status-badge status-open';
-    statusText.textContent = 'Aberto agora';
+    if (statusEl) statusEl.className = 'status-badge status-open';
+    if (statusText) statusText.textContent = 'Aberto agora';
 }
 
 function setStoreClosed(statusEl, statusText, overlay, main, hours) {
-    statusEl.className = 'status-badge status-closed';
-    statusText.textContent = 'Fechado';
+    if (statusEl) statusEl.className = 'status-badge status-closed';
+    if (statusText) statusText.textContent = 'Fechado';
 
     if (overlay) overlay.style.display = 'flex';
     if (main) main.style.display = 'none';
@@ -104,7 +103,6 @@ async function loadMenu() {
             console.log('Produtos carregados do Firebase:', menuProducts.length);
         } else {
             console.warn('Firebase retornou zero produtos.');
-            // Tenta fallback local
             const stored = localStorage.getItem('lacasa_products');
             if (stored) {
                 menuProducts = JSON.parse(stored);
@@ -167,16 +165,16 @@ function renderMenu(categoryFilter = '') {
                 <i class="fa-solid fa-box-open"></i>
                 <h3>${isConfigMissing ? 'Firebase não configurado' : 'Cardápio em breve'}</h3>
                 <p>${isConfigMissing
-                ? 'O sistema ainda está usando as chaves de exemplo. Por favor, coloque suas chaves reais no arquivo <code>firebase-config.js</code>.'
+                ? 'O sistema ainda está usando as chaves de exemplo.'
                 : 'Não encontramos itens ativos no momento. Verifique o estoque no PDV.'}</p>
-                ${isConfigMissing ? '<span class="debug-hint">Dica: Após configurar, use o botão "Sincronizar Cloud" no PDV.</span>' : ''}
             </div>
         `;
         return;
     }
 
     grid.innerHTML = filtered.map(p => {
-        const inCart = clientCart.find(c => c.id === p.id);
+        const pid = String(p.id);
+        const inCart = clientCart.find(c => String(c.id) === pid);
         return `
             <div class="menu-card" style="border-left: 3px solid ${p.color || '#e50914'};">
                 <div class="menu-card-body">
@@ -192,12 +190,12 @@ function renderMenu(categoryFilter = '') {
                 <div class="menu-card-actions">
                     ${inCart ? `
                         <div class="qty-controls">
-                            <button class="qty-btn" onclick="changeQty(${p.id}, -1)">−</button>
+                            <button class="qty-btn" onclick="changeQty('${pid}', -1)">−</button>
                             <span class="qty-display">${inCart.qty}</span>
-                            <button class="qty-btn" onclick="changeQty(${p.id}, 1)">+</button>
+                            <button class="qty-btn" onclick="changeQty('${pid}', 1)">+</button>
                         </div>
                     ` : `
-                        <button class="add-btn" onclick="addToCart(${p.id})">
+                        <button class="add-btn" onclick="addToCart('${pid}')">
                             <i class="fa-solid fa-plus"></i> Adicionar
                         </button>
                     `}
@@ -212,14 +210,15 @@ function renderMenu(categoryFilter = '') {
 // ============================================================
 
 function addToCart(productId) {
-    const product = menuProducts.find(p => p.id === productId);
+    const pid = String(productId);
+    const product = menuProducts.find(p => String(p.id) === pid);
     if (!product) return;
 
-    const existing = clientCart.find(c => c.id === productId);
+    const existing = clientCart.find(c => String(c.id) === pid);
     if (existing) {
         existing.qty++;
     } else {
-        clientCart.push({ id: product.id, name: product.name, price: product.price, qty: 1 });
+        clientCart.push({ id: pid, name: product.name, price: product.price, qty: 1 });
     }
 
     updateCartUI();
@@ -227,12 +226,13 @@ function addToCart(productId) {
 }
 
 function changeQty(productId, delta) {
-    const item = clientCart.find(c => c.id === productId);
+    const pid = String(productId);
+    const item = clientCart.find(c => String(c.id) === pid);
     if (!item) return;
 
     item.qty += delta;
     if (item.qty <= 0) {
-        clientCart = clientCart.filter(c => c.id !== productId);
+        clientCart = clientCart.filter(c => String(c.id) !== pid);
     }
 
     updateCartUI();
@@ -244,7 +244,6 @@ function getCurrentCategory() {
     if (!active) return '';
     const text = active.textContent.trim();
     if (text.includes('Todos')) return '';
-    // Extract category name (after the emoji)
     const parts = text.split(' ');
     return parts.slice(1).join(' ');
 }
@@ -287,9 +286,9 @@ function renderCartItems() {
                 <span class="cart-item-price">R$ ${(item.price * item.qty).toFixed(2).replace('.', ',')}</span>
             </div>
             <div class="cart-item-controls">
-                <button class="qty-btn-sm" onclick="changeQty(${item.id}, -1)">−</button>
+                <button class="qty-btn-sm" onclick="changeQty('${item.id}', -1)">−</button>
                 <span>${item.qty}</span>
-                <button class="qty-btn-sm" onclick="changeQty(${item.id}, 1)">+</button>
+                <button class="qty-btn-sm" onclick="changeQty('${item.id}', 1)">+</button>
             </div>
         </div>
     `).join('');
@@ -324,6 +323,27 @@ function goToCheckout() {
     document.getElementById('checkout-subtotal').textContent = `R$ ${subtotal.toFixed(2).replace('.', ',')}`;
     document.getElementById('checkout-total').textContent = `R$ ${subtotal.toFixed(2).replace('.', ',')}`;
 
+    // Reset selections
+    selectedTipo = 'retirada';
+    selectedPay = 'Dinheiro';
+    document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.tipo-btn[data-tipo="retirada"]').classList.add('active');
+    document.querySelectorAll('.pay-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.pay-btn[data-pay="Dinheiro"]').classList.add('active');
+
+    document.getElementById('endereco-section').style.display = 'none';
+    document.getElementById('mesa-section').style.display = 'none';
+    document.getElementById('troco-section').style.display = 'block';
+    const taxaLine = document.getElementById('taxa-line');
+    if (taxaLine) taxaLine.style.display = 'none';
+
+    // Clear inputs
+    const inputs = ['nome-input', 'whatsapp-input', 'endereco-input', 'mesa-input', 'troco-input'];
+    inputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
     document.getElementById('checkout-modal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
 }
@@ -345,7 +365,6 @@ function selectTipo(tipo) {
     const taxaLine = document.getElementById('taxa-line');
     if (tipo === 'entrega') {
         taxaLine.style.display = 'flex';
-        // Taxa fixa por enquanto (pode ser configurável no Firestore)
         document.getElementById('checkout-taxa').textContent = 'A combinar';
     } else {
         taxaLine.style.display = 'none';
@@ -364,8 +383,15 @@ async function submitOrder() {
     const nome = document.getElementById('nome-input').value.trim();
     const whatsapp = document.getElementById('whatsapp-input').value.trim();
 
-    if (!nome || !whatsapp) {
-        alert('Por favor, preencha seu nome e WhatsApp.');
+    if (!nome) {
+        alert('Por favor, preencha seu nome.');
+        document.getElementById('nome-input').focus();
+        return;
+    }
+
+    if (!whatsapp) {
+        alert('Por favor, preencha seu WhatsApp.');
+        document.getElementById('whatsapp-input').focus();
         return;
     }
 
@@ -373,6 +399,7 @@ async function submitOrder() {
         const endereco = document.getElementById('endereco-input').value.trim();
         if (!endereco) {
             alert('Por favor, preencha o endereço de entrega.');
+            document.getElementById('endereco-input').focus();
             return;
         }
     }
@@ -401,12 +428,24 @@ async function submitOrder() {
         }
     } catch (e) { }
 
+    // Desativa botão para evitar duplo envio
+    const submitBtn = document.querySelector('.submit-order-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+    }
+
     try {
         const orderId = await FireDB.createOrder(order);
         closeCheckout();
         showTracking(orderId);
     } catch (e) {
         alert('Erro ao enviar pedido. Tente novamente.\n' + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Pedido';
+        }
     }
 }
 
