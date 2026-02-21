@@ -769,6 +769,12 @@ function bulkDelete() {
         onConfirm: () => {
             products = products.filter(p => !ids.includes(String(p.id)));
             saveProducts();
+
+            // Remove do Firebase também
+            if (typeof FireDB !== 'undefined') {
+                ids.forEach(pid => FireDB.deleteProduct(pid).catch(() => { }));
+            }
+
             const text = document.getElementById('search-inventory')?.value || '';
             renderInventory(text);
             renderProducts();
@@ -869,6 +875,12 @@ function deleteProduct(id) {
             const pid = String(id);
             products = products.filter(p => String(p.id) !== pid);
             saveProducts();
+
+            // Remove do Firebase também
+            if (typeof FireDB !== 'undefined') {
+                FireDB.deleteProduct(pid).catch(e => console.warn('Erro ao excluir do Firebase:', e));
+            }
+
             const text = document.getElementById('search-inventory')?.value || '';
             renderInventory(text);
             renderProducts();
