@@ -141,10 +141,19 @@ var FireDB = {
                 callback(orders);
             }, error => {
                 console.error('❌ FireDB: Erro ao escutar pedidos:', error.message);
-                if (error.message.includes('index')) {
-                    console.error('Crie o índice composto acessando o link abaixo:');
-                    console.error(error.message);
+
+                // Alerta prominente para o usuário
+                let msg = 'Erro ao carregar pedidos: ' + error.message;
+                if (error.code === 'permission-denied') {
+                    msg = '⚠️ PERMISSÃO NEGADA: Verifique se o App Check ou as Regras do Firestore estão bloqueando o acesso.';
+                } else if (error.message.includes('index')) {
+                    msg = '⚠️ ÍNDICE NECESSÁRIO: Clique no link no console (F12) para criar o índice no Firebase.';
                 }
+
+                const banner = document.createElement('div');
+                banner.style.cssText = 'position:fixed; top:0; left:0; width:100%; background:#e50914; color:white; padding:15px; text-align:center; z-index:10000; font-weight:bold; box-shadow:0 4px 10px rgba(0,0,0,0.5);';
+                banner.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${msg}`;
+                document.body.prepend(banner);
             });
     },
 
