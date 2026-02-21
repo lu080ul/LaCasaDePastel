@@ -1,23 +1,15 @@
 // ============================================================
 // Firebase Config — La Casa de Pastel
 // ============================================================
-// INSTRUÇÕES:
-// 1. Acesse https://console.firebase.google.com
-// 2. Crie um projeto (ex: "la-casa-pdv")
-// 3. Vá em Project Settings > General > Add App > Web
-// 4. Copie o objeto firebaseConfig e substitua abaixo
-// 5. No console, ative:
-//    - Firestore Database (modo produção)
-//    - Authentication > Email/Password
-// ============================================================
 
 const firebaseConfig = {
-    apiKey: "SUA_API_KEY_AQUI",
-    authDomain: "SEU_PROJETO.firebaseapp.com",
-    projectId: "SEU_PROJETO",
-    storageBucket: "SEU_PROJETO.appspot.com",
-    messagingSenderId: "123456789",
-    appId: "SEU_APP_ID"
+    apiKey: "AIzaSyCy3LJvSpLChOhZcywd6k490p8eqdze3Tk",
+    authDomain: "la-casa-de-pastel-34cf3.firebaseapp.com",
+    projectId: "la-casa-de-pastel-34cf3",
+    storageBucket: "la-casa-de-pastel-34cf3.firebasestorage.app",
+    messagingSenderId: "1072801934019",
+    appId: "1:1072801934019:web:c181746ad42ba4ba45d076",
+    measurementId: "G-3KV7DSJME9"
 };
 
 // Inicializa o Firebase
