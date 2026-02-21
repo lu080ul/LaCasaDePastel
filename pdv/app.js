@@ -108,6 +108,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Monitora conexão em tempo real
     initConnectionMonitor();
+
+    // Diagnóstico Firebase
+    runFirebaseDiagnostic();
 });
 
 // Navegação de Abas
@@ -1584,4 +1587,79 @@ function updateConnectionStatus(isOnline) {
         el.title = 'Sem conexão — modo offline';
         el.querySelector('.conn-label').textContent = 'Offline';
     }
+}
+
+// ============================================================
+// --- DIAGNÓSTICO FIREBASE ---
+// ============================================================
+
+async function runFirebaseDiagnostic() {
+    const results = [];
+
+    // Test 1: FireDB exists?
+    if (typeof FireDB === 'undefined') {
+        results.push('❌ FireDB não carregou');
+        showDiagnostic(results);
+        return;
+    }
+    results.push('✅ FireDB carregado');
+
+    // Test 2: Firestore db exists?
+    if (typeof db === 'undefined') {
+        results.push('❌ Firestore db não inicializou');
+        showDiagnostic(results);
+        return;
+    }
+    results.push('✅ Firestore db inicializado');
+
+    // Test 3: Can read products?
+    try {
+        const prods = await FireDB.loadProducts();
+        results.push(`✅ Leitura OK — ${prods.length} produto(s) no Firebase`);
+    } catch (e) {
+        results.push('❌ Erro ao ler produtos: ' + e.message);
+    }
+
+    // Test 4: Can read orders?
+    try {
+        const snap = await db.collection('orders').limit(5).get();
+        results.push(`✅ Pedidos OK — ${snap.docs.length} pedido(s) encontrado(s)`);
+    } catch (e) {
+        results.push('❌ Erro ao ler pedidos: ' + e.message);
+    }
+
+    // Test 5: Can write?
+    try {
+        await db.collection('settings').doc('_diagnostic').set({
+            test: true,
+            timestamp: new Date().toISOString()
+        });
+        await db.collection('settings').doc('_diagnostic').delete();
+        results.push('✅ Escrita/Exclusão OK');
+    } catch (e) {
+        results.push('❌ Erro ao escrever: ' + e.message);
+    }
+
+    // Test 6: Products loaded locally?
+    results.push(`ℹ️ ${products.length} produto(s) carregados localmente`);
+
+    showDiagnostic(results);
+}
+
+function showDiagnostic(results) {
+    console.log('=== DIAGNÓSTICO FIREBASE ===');
+    results.forEach(r => console.log(r));
+    console.log('============================');
+
+    // Mostra banner visual
+    const banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1a1a2e;color:white;padding:12px 20px;z-index:99999;font-family:monospace;font-size:13px;border-bottom:2px solid #e50914;max-height:50vh;overflow:auto;';
+    banner.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong>🔧 Diagnóstico Firebase</strong>
+            <button onclick="this.parentElement.parentElement.remove()" style="background:#e50914;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Fechar</button>
+        </div>
+        ${results.map(r => `<div style="padding:2px 0;">${r}</div>`).join('')}
+    `;
+    document.body.prepend(banner);
 }
