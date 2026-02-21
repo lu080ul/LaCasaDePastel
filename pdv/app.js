@@ -68,12 +68,46 @@ function processPrintQueue() {
 }
 
 // --- Inicialização ---
-document.addEventListener('DOMContentLoaded', () => {
-    loadData();
+document.addEventListener('DOMContentLoaded', async () => {
+    // Carrega dados (Firebase ou localStorage)
+    await loadData();
+
+    // Renderiza interface
     renderProducts();
     renderInventory();
     updateCartUI();
     updateClosureUI();
+    selectPayment('Dinheiro');
+
+    // Renderiza grid de horários e modo da loja
+    renderStoreHoursGrid();
+    loadStoreMode();
+
+    // Carrega auto-approve
+    loadAutoApprove();
+
+    // Inicia listener de pedidos online (se Firebase configurado)
+    try {
+        if (typeof FireDB !== 'undefined' && firebaseConfig.apiKey !== 'SUA_API_KEY_AQUI') {
+            startOrdersListener();
+
+            FireDB.onSettingsChange((settings) => {
+                if (settings?.autoApprove !== undefined) {
+                    const toggle = document.getElementById('auto-approve-toggle');
+                    if (toggle) toggle.checked = settings.autoApprove;
+                }
+                // Atualiza modo da loja se mudou remotamente
+                if (settings?.storeMode) {
+                    setStoreManual(settings.storeMode);
+                }
+            });
+        }
+    } catch (e) {
+        console.log('Firebase não configurado, trabalhando apenas offline.');
+    }
+
+    // Monitora conexão em tempo real
+    initConnectionMonitor();
 });
 
 // Navegação de Abas
@@ -1505,41 +1539,7 @@ function startOrdersListener() {
 // --- INICIALIZAÇÃO ---
 // ============================================================
 
-document.addEventListener('DOMContentLoaded', () => {
-    selectPayment('Dinheiro');
-
-    // Renderiza grid de horários
-    renderStoreHoursGrid();
-    loadStoreMode();
-
-    // Carrega override
-    const override = localStorage.getItem('lacasa_store_override') === 'true';
-    const overrideCheckbox = document.getElementById('store-open-override');
-    if (overrideCheckbox) overrideCheckbox.checked = override;
-
-    // Carrega auto-approve
-    loadAutoApprove();
-
-    // Inicia listener de pedidos online (se Firebase configurado)
-    try {
-        if (typeof FireDB !== 'undefined' && firebaseConfig.apiKey !== 'SUA_API_KEY_AQUI') {
-            startOrdersListener();
-
-            // Sincroniza produtos e settings com Firebase
-            FireDB.onSettingsChange((settings) => {
-                if (settings?.autoApprove !== undefined) {
-                    const toggle = document.getElementById('auto-approve-toggle');
-                    if (toggle) toggle.checked = settings.autoApprove;
-                }
-            });
-        }
-    } catch (e) {
-        console.log('Firebase não configurado, trabalhando apenas offline.');
-    }
-
-    // Monitora conexão em tempo real
-    initConnectionMonitor();
-});
+// (Inicialização unificada acima, na linha ~70)
 
 // ============================================================
 // --- MONITOR DE CONEXÃO ---
