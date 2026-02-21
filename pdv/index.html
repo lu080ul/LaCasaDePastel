@@ -153,60 +153,58 @@
         <section id="tab-estoque" class="tab-content">
             <div class="inventory-header">
                 <h2>Gerenciamento de Estoque</h2>
-                <div style="display: flex; gap: 15px; align-items: center; width: 60%;">
-                    <div class="search-bar" style="flex: 1; margin: 0;">
-                        <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" id="search-inventory" placeholder="Pesquisar estoque..."
-                            onkeyup="filterInventory()">
-                    </div>
-                    <div class="inventory-actions">
-                        <button class="btn-novo" onclick="syncToCloud()"
-                            style="background-color: var(--success-color); margin-right: 10px;">
-                            <i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar Cloud
-                        </button>
-                        <button class="btn-novo" onclick="openModal('modal-product')">
-                            <i class="fa-solid fa-plus"></i> Novo Produto
-                        </button>
-                    </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-novo" onclick="syncToCloud()" style="background-color: var(--success-color);">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar Cloud
+                    </button>
+                    <button class="btn-novo" onclick="openModal('modal-product')">
+                        <i class="fa-solid fa-plus"></i> Novo Produto
+                    </button>
                 </div>
+            </div>
 
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th style="width:40px; text-align:center;">
-                                    <input type="checkbox" id="select-all-inventory" onchange="toggleSelectAll(this)"
-                                        title="Selecionar Todos">
-                                </th>
-                                <th>Nome</th>
-                                <th>Categoria</th>
-                                <th>Preço (R$)</th>
-                                <th>Estoque</th>
-                                <th>Status</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="inventory-table-body">
-                            <!-- Itens via JS -->
-                        </tbody>
-                    </table>
-                </div>
+            <div class="search-bar" style="margin-bottom: 15px;">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="search-inventory" placeholder="Pesquisar estoque..." onkeyup="filterInventory()">
+            </div>
 
-                <!-- Barra de Ações em Lote -->
-                <div id="bulk-action-bar" class="bulk-action-bar" style="display:none;">
-                    <span id="bulk-count">0 selecionado(s)</span>
-                    <div class="bulk-actions">
-                        <button onclick="bulkToggleStatus(false)" class="bulk-btn bulk-disable">
-                            <i class="fa-solid fa-eye-slash"></i> Desabilitar
-                        </button>
-                        <button onclick="bulkToggleStatus(true)" class="bulk-btn bulk-enable">
-                            <i class="fa-solid fa-eye"></i> Habilitar
-                        </button>
-                        <button onclick="bulkDelete()" class="bulk-btn bulk-delete">
-                            <i class="fa-solid fa-trash"></i> Excluir
-                        </button>
-                    </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width:40px; text-align:center;">
+                                <input type="checkbox" id="select-all-inventory" onchange="toggleSelectAll(this)"
+                                    title="Selecionar Todos">
+                            </th>
+                            <th>Nome</th>
+                            <th>Categoria</th>
+                            <th>Preço (R$)</th>
+                            <th>Estoque</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-table-body">
+                        <!-- Itens via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Barra de Ações em Lote -->
+            <div id="bulk-action-bar" class="bulk-action-bar" style="display:none;">
+                <span id="bulk-count">0 selecionado(s)</span>
+                <div class="bulk-actions">
+                    <button onclick="bulkToggleStatus(false)" class="bulk-btn bulk-disable">
+                        <i class="fa-solid fa-eye-slash"></i> Desabilitar
+                    </button>
+                    <button onclick="bulkToggleStatus(true)" class="bulk-btn bulk-enable">
+                        <i class="fa-solid fa-eye"></i> Habilitar
+                    </button>
+                    <button onclick="bulkDelete()" class="bulk-btn bulk-delete">
+                        <i class="fa-solid fa-trash"></i> Excluir
+                    </button>
                 </div>
+            </div>
         </section>
 
 
