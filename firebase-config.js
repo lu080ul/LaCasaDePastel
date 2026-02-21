@@ -91,10 +91,22 @@ const FireDB = {
     onNewOrders(callback) {
         return db.collection('orders')
             .where('status', 'in', ['pendente', 'aprovado', 'preparando', 'pronto'])
-            .orderBy('createdAt', 'desc')
             .onSnapshot(snap => {
                 const orders = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Ordena por data de criação (mais recente primeiro) em memória
+                orders.sort((a, b) => {
+                    const tA = a.createdAt?.toMillis?.() || 0;
+                    const tB = b.createdAt?.toMillis?.() || 0;
+                    return tB - tA;
+                });
                 callback(orders);
+            }, error => {
+                console.error('❌ Erro ao escutar pedidos:', error.message);
+                // Se o erro é de índice, mostra a URL para criar
+                if (error.message.includes('index')) {
+                    console.error('Crie o índice composto acessando o link abaixo:');
+                    console.error(error.message);
+                }
             });
     },
 
