@@ -155,7 +155,11 @@ function renderMenu(categoryFilter = '') {
     const grid = document.getElementById('menu-grid');
     if (!grid) return;
 
-    const filtered = menuProducts.filter(p => !p.isAddon && (!categoryFilter || p.category === categoryFilter));
+    const filtered = menuProducts.filter(p =>
+        !p.isAddon &&
+        p.category?.toLowerCase() !== 'adicional' &&
+        (!categoryFilter || p.category === categoryFilter)
+    );
 
     if (filtered.length === 0) {
         const isConfigMissing = firebaseConfig.apiKey.includes('SUA_API_KEY');
@@ -222,7 +226,9 @@ function openItemModal(productId) {
     const addonsContainer = document.getElementById('item-modal-addons');
     addonsContainer.innerHTML = '';
 
-    const availableAddons = menuProducts.filter(p => p.isAddon === true && p.active !== false && p.stock > 0);
+    // Bebidas não possuem adicionais
+    const isBebida = p.category?.toLowerCase() === 'bebida';
+    const availableAddons = isBebida ? [] : menuProducts.filter(p => p.isAddon === true && p.active !== false && p.stock > 0);
 
     if (availableAddons.length > 0) {
         let addonsHTML = '<p style="font-weight:600; margin-bottom:8px;">Adicionais (Opcional)</p>';
@@ -331,15 +337,53 @@ function getCurrentCategory() {
 }
 
 function updateCartUI() {
-    const badge = document.getElementById('cart-badge');
-    const total = clientCart.reduce((sum, c) => sum + c.qty, 0);
+    const totalQty = clientCart.reduce((sum, c) => sum + c.qty, 0);
+    const totalValue = clientCart.reduce((sum, c) => sum + (c.price * c.qty), 0);
 
-    if (badge) {
-        badge.textContent = total;
-        badge.style.display = total > 0 ? 'flex' : 'none';
+    // Update Head/Header Badge
+    const headerBadge = document.getElementById('cart-badge-header');
+    if (headerBadge) {
+        headerBadge.textContent = totalQty;
+        headerBadge.style.display = totalQty > 0 ? 'flex' : 'none';
+    }
+
+    // Update Bottom Bar
+    const bottomBadge = document.getElementById('cart-badge-bottom');
+    if (bottomBadge) {
+        bottomBadge.textContent = totalQty;
+    }
+
+    const totalElBar = document.getElementById('cart-bar-total');
+    if (totalElBar) {
+        totalElBar.textContent = `R$ ${totalValue.toFixed(2).replace('.', ',')}`;
+    }
+
+    const container = document.getElementById('bottom-cart-container');
+    if (container) {
+        if (totalQty > 0) {
+            container.style.display = 'block';
+        } else {
+            container.style.display = 'none';
+            container.classList.remove('expanded');
+        }
     }
 
     renderCartItems();
+}
+
+function toggleBottomCart() {
+    const container = document.getElementById('bottom-cart-container');
+    if (!container) return;
+
+    if (clientCart.length === 0) return;
+
+    container.classList.toggle('expanded');
+
+    if (container.classList.contains('expanded')) {
+        document.body.style.overflow = 'hidden';
+    } else {
+        document.body.style.overflow = '';
+    }
 }
 
 function renderCartItems() {
@@ -386,14 +430,12 @@ function renderCartItems() {
 }
 
 function openCart() {
-    document.getElementById('cart-overlay').classList.add('active');
-    document.getElementById('cart-drawer').classList.add('active');
-    document.body.style.overflow = 'hidden';
+    toggleBottomCart();
 }
 
 function closeCart() {
-    document.getElementById('cart-overlay').classList.remove('active');
-    document.getElementById('cart-drawer').classList.remove('active');
+    const container = document.getElementById('bottom-cart-container');
+    if (container) container.classList.remove('expanded');
     document.body.style.overflow = '';
 }
 
@@ -567,10 +609,13 @@ async function submitOrder() {
     if (selectedPay === 'Pix') {
         try {
             const settings = await FireDB.loadSettings();
-            if (settings && settings.pixKey) {
-                const txid = `PEDIDO`;
-                pixPayloadUrl = generatePixBrCode(settings.pixKey, subtotal, settings.pixMerchantName || 'La Casa de Pastel', settings.pixMerchantCity || 'SAO PAULO', txid);
-            }
+            const pixKey = settings?.pixKey || 'suachavepix@email.com'; // Fallback for testing
+            const merchantName = settings?.pixMerchantName || 'La Casa de Pastel';
+            const merchantCity = settings?.pixMerchantCity || 'SAO PAULO';
+            const txid = `PEDIDO`;
+
+            pixPayloadUrl = generatePixBrCode(pixKey, subtotal, merchantName, merchantCity, txid);
+            console.log("PIX PAYLOAD GENERATED:", pixPayloadUrl);
         } catch (e) {
             console.warn("Could not generate Pix payload:", e);
         }
@@ -653,7 +698,17 @@ async function submitOrder() {
     try {
         const orderId = await FireDB.createOrder(order);
         closeCheckout();
-        showTracking(orderId);
+
+        if (selectedPay === 'Pix') {
+            // Refined flow: Show Pix modal first
+            openPixModal(orderId, pixPayloadUrl);
+        } else {
+            showTracking(orderId);
+        }
+
+        // Adiciona à lista de notificações/histórico
+        addNotification(`Pedido #${orderId.slice(-4).toUpperCase()} Enviado`, `Seu pedido foi recebido e está aguardando aprovação.`);
+
     } catch (e) {
         alert('Erro ao enviar pedido. Tente novamente.\n' + e.message);
     } finally {
@@ -662,6 +717,86 @@ async function submitOrder() {
             submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Pedido';
         }
     }
+}
+
+// ============================================================
+// --- PIX MODAL (REFINED FLOW) ---
+// ============================================================
+
+let currentPixOrderId = null;
+
+function openPixModal(orderId, payload) {
+    currentPixOrderId = orderId;
+    const modal = document.getElementById('pix-modal');
+    const payloadEl = document.getElementById('pix-modal-payload');
+
+    if (payloadEl) payloadEl.textContent = payload || 'Erro ao gerar código.';
+    if (modal) modal.style.display = 'flex';
+
+    startPixTimer(orderId, true);
+    document.body.style.overflow = 'hidden';
+
+    // Inicia listener para fechar auto se aprovado
+    const unsub = FireDB.onOrderStatus(orderId, (data) => {
+        if (data.status === 'aprovado' || data.status === 'preparando') {
+            unsub();
+            closePixModal();
+            showTracking(orderId);
+            notifyClient("Pagamento Aprovado!", "Seu pedido já está sendo preparado.");
+        }
+    });
+}
+
+function closePixModal() {
+    const modal = document.getElementById('pix-modal');
+    if (modal) modal.style.display = 'none';
+    if (pixTimerInterval) clearInterval(pixTimerInterval);
+    document.body.style.overflow = '';
+
+    // Se fechar manual, vai pro tracking padrão
+    if (currentPixOrderId) {
+        showTracking(currentPixOrderId);
+        currentPixOrderId = null;
+    }
+}
+
+function copyPixCode() {
+    const payload = document.getElementById('pix-modal-payload').textContent;
+    if (!payload || payload.includes('Erro')) return;
+
+    navigator.clipboard.writeText(payload).then(() => {
+        const btn = document.querySelector('.btn-copy-pix');
+        const originalContent = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> COPIADO!';
+        btn.style.background = 'var(--color-success)';
+        setTimeout(() => {
+            btn.innerHTML = originalContent;
+            btn.style.background = '#32bcad';
+        }, 2000);
+    });
+}
+
+let pixTimerInterval = null;
+
+function startPixTimer(orderId, isModal = false) {
+    let timeLeft = 120; // 2 minutos
+    const timerDisplayId = isModal ? 'pix-modal-timer' : 'pix-timer-' + orderId;
+
+    if (pixTimerInterval) clearInterval(pixTimerInterval);
+
+    pixTimerInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft < 0) {
+            clearInterval(pixTimerInterval);
+            return;
+        }
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        const display = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        const el = document.getElementById(timerDisplayId);
+        if (el) el.textContent = display;
+    }, 1000);
 }
 
 // ============================================================
@@ -759,22 +894,37 @@ function renderTrackingSteps(orderData) {
         `;
     }).join('');
 
-    // Se houver Payload Pix, renderiza bloco para Copiar
+    // Se houver Payload Pix, renderiza bloco para Copiar com Timer
     if (orderData.pixPayload) {
+        const isApproved = orderData.status === 'aprovado' || orderData.status === 'preparando' || orderData.status === 'pronto';
+
         html += `
             <div style="margin-top: 20px; padding: 15px; background: rgba(50, 188, 173, 0.1); border: 1px solid #32bcad; border-radius: 8px; text-align: center;">
-                <p style="font-size: 0.9rem; font-weight: bold; color: #32bcad; margin-bottom: 8px;">
-                    <i class="fa-brands fa-pix"></i> PIX COPIA E COLA
-                </p>
-                <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 10px;">
-                    Toque no código abaixo para copiar e pague no app do seu banco.
-                </p>
-                <div onclick="navigator.clipboard.writeText('${orderData.pixPayload}').then(()=>alert('Pix copiado!'))" 
-                     style="font-size: 0.75rem; word-break: break-all; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 5px; cursor: pointer; color: white;">
-                    ${orderData.pixPayload}
-                </div>
+                ${isApproved ? `
+                    <p style="color: #32bcad; font-weight: bold; font-size: 1.1rem;">
+                        <i class="fa-solid fa-check-circle"></i> PAGAMENTO APROVADO
+                    </p>
+                    <p style="font-size: 0.85rem; margin-top: 5px;">Seu pedido já está em processamento!</p>
+                ` : `
+                    <p style="font-size: 0.9rem; font-weight: bold; color: #32bcad; margin-bottom: 8px;">
+                        <i class="fa-brands fa-pix"></i> PIX COPIA E COLA
+                    </p>
+                    <div id="pix-timer-${orderData.id}" style="font-size: 1.2rem; font-weight: 800; color: var(--color-primary); margin-bottom: 10px;">2:00</div>
+                    <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 10px;">
+                        Toque no código abaixo para copiar e pague no app do seu banco.
+                    </p>
+                    <div onclick="navigator.clipboard.writeText('${orderData.pixPayload}').then(()=>alert('Pix copiado!'))" 
+                         style="font-size: 0.75rem; word-break: break-all; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 5px; cursor: pointer; color: white;">
+                        ${orderData.pixPayload}
+                    </div>
+                `}
             </div>
         `;
+
+        // Auto-atribui o timer se ainda não estiver aprovado
+        if (!isApproved && !pixTimerInterval) {
+            setTimeout(() => startPixTimer(orderData.id), 100);
+        }
     }
 
     container.innerHTML = html;
@@ -823,6 +973,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Check Notification Permission
     setTimeout(checkNotificationPermission, 2500);
+
+    // Carrega notificações salvas
+    loadNotifications();
+    updateNotifBadge();
 });
 
 // ============================================================
@@ -832,6 +986,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================================
 
 function switchView(viewName) {
+    // Se clicar no que já está aberto e não for o menu, volta pro menu (toggle)
+    const currentActive = document.querySelector('.view.active');
+    if (currentActive && currentActive.id === `view-${viewName}` && viewName !== 'menu') {
+        switchView('menu');
+        return;
+    }
+
     // Esconde todas as views
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     // Mostra a view desejada
@@ -846,6 +1007,11 @@ function switchView(viewName) {
     // Se for perfil, carrega os dados
     if (viewName === 'profile') {
         loadProfileToView();
+    }
+
+    // Se for notificações, renderiza e limpa badge
+    if (viewName === 'notifications') {
+        renderNotifications();
     }
 }
 
@@ -1047,6 +1213,75 @@ async function requestNotificationPermission() {
         alert("Erro ao pedir ativação de notificações. Verifique as configurações do seu navegador.");
     }
 }
+// ============================================================
+// --- CENTRAL DE NOTIFICAÇÕES ---
+// ============================================================
+
+let notifications = [];
+
+function addNotification(title, body) {
+    const notif = {
+        id: Date.now(),
+        title,
+        body,
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        read: false
+    };
+    notifications.unshift(notif);
+    saveNotifications();
+    renderNotifications();
+    updateNotifBadge();
+}
+
+function saveNotifications() {
+    localStorage.setItem('lacasa_notifications', JSON.stringify(notifications.slice(0, 20)));
+}
+
+function loadNotifications() {
+    const stored = localStorage.getItem('lacasa_notifications');
+    if (stored) notifications = JSON.parse(stored);
+}
+
+function renderNotifications() {
+    const container = document.getElementById('notifications-list');
+    if (!container) return;
+
+    if (notifications.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fa-solid fa-bell-slash"></i>
+                <p>Nenhuma notificação por enquanto.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = notifications.map(n => `
+        <div class="notification-item ${n.read ? '' : 'unread'}">
+            <span class="notif-time">${n.time}</span>
+            <span class="notif-title">${n.title}</span>
+            <p class="notif-body">${n.body}</p>
+        </div>
+    `).join('');
+
+    // Mark as read when viewing
+    if (document.getElementById('view-notifications').classList.contains('active')) {
+        setTimeout(() => {
+            notifications.forEach(n => n.read = true);
+            saveNotifications();
+            updateNotifBadge();
+            renderNotifications();
+        }, 2000);
+    }
+}
+
+function updateNotifBadge() {
+    const badge = document.getElementById('notif-badge');
+    const unread = notifications.filter(n => !n.read).length;
+    if (badge) {
+        badge.style.display = unread > 0 ? 'block' : 'none';
+    }
+}
 
 // ============================================================
 // --- PIX BR CODE (EMV QR Code — Padrão Banco Central) ---
@@ -1118,15 +1353,15 @@ function generatePixBrCode(pixKey, amount, name, city, txid, desc = '') {
 function notifyClient(title, body) {
     if ("Notification" in window && Notification.permission === "granted") {
         try {
-            new Notification(title, { 
-                body, 
+            new Notification(title, {
+                body,
                 icon: '/cliente/icon-192.png',
                 badge: '/cliente/icon-192.png'
             });
         } catch (e) { console.warn("Erro ao disparar notificação:", e); }
     }
     if (navigator.vibrate) {
-        try { navigator.vibrate([200, 100, 200]); } catch (e) {}
+        try { navigator.vibrate([200, 100, 200]); } catch (e) { }
     }
 }
 
