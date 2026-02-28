@@ -13,6 +13,20 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+    <!-- PWA -->
+    <link rel="manifest" href="../manifest.json">
+    <meta name="theme-color" content="#e50914">
+    <link rel="apple-touch-icon" href="../icons/LogoLaCasa.jpg">
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('../sw.js')
+                    .then(reg => console.log('SW registrado!', reg))
+                    .catch(err => console.log('Erro ao registrar SW', err));
+            });
+        }
+    </script>
 </head>
 
 <body>
@@ -117,6 +131,14 @@
                         </div>
                     </div>
 
+                    <div style="margin-top: 15px; margin-bottom: 15px;">
+                        <label
+                            style="display:block; margin-bottom: 5px; color: var(--color-text-muted); font-size: 0.9rem;">Observação
+                            Geral do Pedido:</label>
+                        <textarea id="order-obs" placeholder="Ex: Entregar pelo portão lateral..." rows="2"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white; resize:vertical;"></textarea>
+                    </div>
+
                     <div class="checkout-actions" id="checkout-actions">
                         <button class="action-btn cancel-btn" onclick="clearCart()"><i class="fa-solid fa-trash"></i>
                             Cancelar</button>
@@ -213,6 +235,26 @@
             <div class="closure-container">
                 <h2>Gerenciamento do Sistema</h2>
 
+                <!-- Atualização do Aplicativo (Apenas se for Electron) -->
+                <div id="update-panel"
+                    style="display:none; background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--color-primary); margin-bottom: 20px; text-align: left;">
+                    <h3 style="margin-bottom: 10px; color: var(--color-primary);">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Atualizações do App
+                    </h3>
+                    <p style="font-size:0.85rem; color:var(--color-text-muted); margin-bottom:15px;">
+                        Verifique se há uma nova versão do sistema disponível para melhorar a estabilidade e adicionar
+                        novos recursos.
+                    </p>
+                    <button class="btn-novo" onclick="checkAppUpdates()"
+                        style="background-color: var(--color-primary);">
+                        <i class="fa-solid fa-rotate"></i> Verificar Agora
+                    </button>
+                    <span id="update-status-label"
+                        style="font-size: 0.8rem; margin-left: 10px; color: var(--success-color); font-weight: bold; display: none;">
+                        Processando...
+                    </span>
+                </div>
+
                 <!-- Horário de Funcionamento -->
                 <div
                     style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 20px; margin-bottom: 20px; text-align: left;">
@@ -281,6 +323,31 @@
                     </label>
                 </div>
 
+                <!-- Notificações Push -->
+                <div
+                    style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; text-align: left;">
+                    <h3
+                        style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                        <i class="fa-solid fa-bell" style="color: #f59e0b;"></i> Notificações Push (App Cliente)
+                    </h3>
+                    <p style="font-size:0.83rem; color:var(--color-text-muted); margin-bottom:14px;">
+                        <strong>Opcional:</strong> Utilize uma Server Key apenas se desejar que o cliente receba alertas
+                        mesmo com o navegador fechado no celular.
+                        As notificações em tempo real (com o site aberto) já estão ativas automaticamente!
+                    </p>
+                    <div class="form-group">
+                        <label
+                            style="display:block; margin-bottom:5px; font-size:0.9rem; color:var(--color-text-muted);">Firebase
+                            Server Key (FCM Legacy API):</label>
+                        <input type="password" id="fcm-server-key" placeholder="Cole sua Server Key aqui..."
+                            style="width: 100%; padding: 10px; background-color: var(--bg-panel); border: 1px solid var(--border-color); color: white; border-radius: 5px; margin-bottom:0;">
+                    </div>
+                    <button class="btn-novo" onclick="saveFCMKey()"
+                        style="margin-top: 14px; padding: 8px 15px; border-radius: 6px;">
+                        <i class="fa-solid fa-floppy-disk"></i> Salvar Configuração Avançada
+                    </button>
+                </div>
+
                 <!-- Configurações PIX -->
                 <div class="pix-settings"
                     style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 20px; margin-bottom: 20px; text-align: left;">
@@ -327,6 +394,26 @@
                         <img id="pix-qr-img" src="" alt="QR Code PIX"
                             style="width: 160px; height: 160px; border-radius: 8px; border: 2px solid #32bcad; padding: 5px; background: white; opacity:0.7;">
                     </div>
+                </div>
+
+                <!-- Configurar Endereço da Loja -->
+                <div
+                    style="background-color: var(--bg-dark); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 20px; margin-bottom: 20px; text-align: left;">
+                    <h3
+                        style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                        <i class="fa-solid fa-map-location-dot" style="color: #60a5fa;"></i> Endereço da Loja
+                    </h3>
+                    <p style="font-size:0.85rem; color:var(--color-text-muted); margin-bottom:15px;">
+                        Forneça o endereço da sua loja. Ele será exibido aos clientes quando escolherem a opção
+                        "Retirada" no app.
+                    </p>
+                    <div class="form-group">
+                        <input type="text" id="store-address-input" placeholder="Rua, Número, Bairro, Cidade..."
+                            style="width: 100%; padding: 10px; background-color: var(--bg-panel); border: 1px solid var(--border-color); color: white; border-radius: 5px; margin-bottom:0;">
+                    </div>
+                    <button class="btn-novo" onclick="saveStoreAddress()" style="margin-top: 14px; padding: 8px 15px;">
+                        <i class="fa-solid fa-floppy-disk"></i> Salvar Endereço
+                    </button>
                 </div>
 
                 <!-- Histórico de Vendas -->
@@ -465,21 +552,12 @@
                     <input type="text" id="product-name" required>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Categoria:</label>
-                        <select id="product-category" required>
-                            <option value="Pastéis">Pastéis</option>
-                            <option value="Bebidas">Bebidas</option>
-                            <option value="Porções">Porções</option>
-                            <option value="Outros">Outros</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Ícone (FontAwesome class):</label>
-                        <input type="text" id="product-icon" value="fa-solid fa-utensils">
-                    </div>
+                <div class="form-group">
+                    <label>Categoria:</label>
+                    <input type="text" id="product-category" list="category-options" placeholder="Ex: Bebidas" required>
+                    <datalist id="category-options">
+                        <!-- Preenchido via JS -->
+                    </datalist>
                 </div>
 
                 <div class="form-row">
@@ -494,9 +572,13 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label>Cor do Cartão (Hex/Nome):</label>
-                    <input type="color" id="product-color" value="#2d2d2d">
+                <div class="form-group"
+                    style="background: var(--bg-dark); padding: 10px; border-radius: 6px; border: 1px dashed var(--border-color);">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 0;">
+                        <input type="checkbox" id="product-is-addon"
+                            style="width: 18px; height: 18px; accent-color: var(--color-primary);">
+                        <span>Este item é um <strong>Adicional</strong> (Não aparece solto no cardápio principal)</span>
+                    </label>
                 </div>
 
                 <div class="modal-actions">
@@ -525,6 +607,42 @@
                 <button id="modal-confirm-ok-btn" onclick="modalConfirmOk()"
                     style="padding:10px 24px; border-radius:7px; border:none; background:var(--danger-color); color:white; cursor:pointer; font-weight:700; font-size:0.95rem;">
                     Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Item Options Modal (Add-ons) PDV -->
+    <div id="pdv-item-modal" class="modal">
+        <div class="modal-content" style="max-width: 400px; padding: 20px;">
+            <span class="close-modal" onclick="closePdvItemModal()">&times;</span>
+            <h2 id="pdv-item-modal-title" style="margin-bottom: 5px;">Detalhes do Item</h2>
+            <p id="pdv-item-modal-desc"
+                style="color:var(--text-color); font-size: 0.9rem; margin-bottom: 20px; opacity: 0.8;"></p>
+
+            <div id="pdv-item-modal-addons" style="margin-bottom: 20px;">
+                <!-- Rendered via JS -->
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label>Observação (Opcional)</label>
+                <textarea id="pdv-item-modal-obs" placeholder="Ex: Tirar cebola..." rows="2"
+                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white; resize:vertical;"></textarea>
+            </div>
+
+            <div style="display: flex; gap: 15px; align-items: center; justify-content: space-between;">
+                <div
+                    style="display:flex; align-items:center; background: var(--bg-dark); border-radius: 6px; padding: 5px;">
+                    <button type="button" onclick="changePdvItemModalQty(-1)"
+                        style="background:transparent; border:none; color:white; width:30px; cursor:pointer; font-size:1.2rem;">−</button>
+                    <span id="pdv-item-modal-qty"
+                        style="padding: 0 15px; font-weight: bold; font-size: 1.1rem;">1</span>
+                    <button type="button" onclick="changePdvItemModalQty(1)"
+                        style="background:transparent; border:none; color:white; width:30px; cursor:pointer; font-size:1.2rem;">+</button>
+                </div>
+                <button type="button" onclick="confirmPdvItemOptions()"
+                    style="flex:1; background: var(--success-color); color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 1.1rem;">
+                    Adicionar <span id="pdv-item-modal-price" style="margin-left:5px; font-weight:normal;"></span>
                 </button>
             </div>
         </div>

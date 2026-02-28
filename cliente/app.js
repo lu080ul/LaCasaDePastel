@@ -135,18 +135,12 @@ function renderCategoryTabs() {
     const tabs = document.getElementById('category-tabs');
     if (!tabs) return;
 
-    const categories = [...new Set(menuProducts.map(p => p.category))];
-    const categoryEmojis = {
-        'Pastéis': '🥟',
-        'Bebidas': '🥤',
-        'Porções': '🍟',
-        'Outros': '🍽️'
-    };
+    const categories = [...new Set(menuProducts.map(p => p.category))].filter(Boolean);
 
     tabs.innerHTML = `
-        <button class="cat-tab active" onclick="filterCategory('todos')">🍽️ Todos</button>
+        <button class="cat-tab active" onclick="filterCategory('todos')">Todos</button>
         ${categories.map(cat => `
-            <button class="cat-tab" onclick="filterCategory('${cat}')">${categoryEmojis[cat] || '🍽️'} ${cat}</button>
+            <button class="cat-tab" onclick="filterCategory('${cat}')">${cat}</button>
         `).join('')}
     `;
 }
@@ -161,9 +155,7 @@ function renderMenu(categoryFilter = '') {
     const grid = document.getElementById('menu-grid');
     if (!grid) return;
 
-    const filtered = categoryFilter
-        ? menuProducts.filter(p => p.category === categoryFilter)
-        : menuProducts;
+    const filtered = menuProducts.filter(p => !p.isAddon && (!categoryFilter || p.category === categoryFilter));
 
     if (filtered.length === 0) {
         const isConfigMissing = firebaseConfig.apiKey.includes('SUA_API_KEY');
@@ -195,17 +187,9 @@ function renderMenu(categoryFilter = '') {
                     <div class="menu-card-price">R$ ${p.price.toFixed(2).replace('.', ',')}</div>
                 </div>
                 <div class="menu-card-actions">
-                    ${inCart ? `
-                        <div class="qty-controls">
-                            <button class="qty-btn" onclick="changeQty('${pid}', -1)">−</button>
-                            <span class="qty-display">${inCart.qty}</span>
-                            <button class="qty-btn" onclick="changeQty('${pid}', 1)">+</button>
-                        </div>
-                    ` : `
-                        <button class="add-btn" onclick="addToCart('${pid}')">
-                            <i class="fa-solid fa-plus"></i> Adicionar
-                        </button>
-                    `}
+                    <button class="add-btn" onclick="openItemModal('${pid}')">
+                        <i class="fa-solid fa-plus"></i> Adicionar
+                    </button>
                 </div>
             </div>
         `;
@@ -216,20 +200,111 @@ function renderMenu(categoryFilter = '') {
 // --- CARRINHO ---
 // ============================================================
 
-function addToCart(productId) {
-    const pid = String(productId);
-    const product = menuProducts.find(p => String(p.id) === pid);
-    if (!product) return;
+// ============================================================
+// --- ITEM MODAL (ADDONS & OBS) ---
+// ============================================================
 
-    const existing = clientCart.find(c => String(c.id) === pid);
-    if (existing) {
-        existing.qty++;
-    } else {
-        clientCart.push({ id: pid, name: product.name, price: product.price, qty: 1 });
+let currentModalItem = null;
+let currentModalQty = 1;
+
+function openItemModal(productId) {
+    const p = menuProducts.find(p => String(p.id) === String(productId));
+    if (!p) return;
+
+    currentModalItem = p;
+    currentModalQty = 1;
+
+    document.getElementById('item-modal-title').textContent = p.name;
+    document.getElementById('item-modal-desc').textContent = p.category;
+    document.getElementById('item-modal-obs').value = '';
+    document.getElementById('item-modal-qty').textContent = currentModalQty;
+
+    const addonsContainer = document.getElementById('item-modal-addons');
+    addonsContainer.innerHTML = '';
+
+    const availableAddons = menuProducts.filter(p => p.isAddon === true && p.active !== false && p.stock > 0);
+
+    if (availableAddons.length > 0) {
+        let addonsHTML = '<p style="font-weight:600; margin-bottom:8px;">Adicionais (Opcional)</p>';
+        availableAddons.forEach((addon, idx) => {
+            addonsHTML += `
+                <label style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-dark); padding:10px; border-radius:6px; margin-bottom:6px; cursor:pointer; border: 1px solid var(--border-color);">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" class="addon-checkbox" data-id="${addon.id}" data-name="${addon.name}" data-price="${addon.price}" onchange="updateItemModalPrice()" style="width:18px; height:18px; accent-color:var(--color-primary);">
+                        <span>${addon.name}</span>
+                    </div>
+                    <span style="color:var(--success-color);">+ R$ ${addon.price.toFixed(2).replace('.', ',')}</span>
+                </label>
+            `;
+        });
+        addonsContainer.innerHTML = addonsHTML;
     }
 
+    updateItemModalPrice();
+    document.getElementById('item-modal').style.display = 'flex';
+}
+
+function closeItemModal() {
+    document.getElementById('item-modal').style.display = 'none';
+    currentModalItem = null;
+}
+
+function changeItemModalQty(delta) {
+    currentModalQty += delta;
+    if (currentModalQty < 1) currentModalQty = 1;
+    document.getElementById('item-modal-qty').textContent = currentModalQty;
+    updateItemModalPrice();
+}
+
+function updateItemModalPrice() {
+    if (!currentModalItem) return;
+
+    let totalUnitPrice = currentModalItem.price;
+    const checkboxes = document.querySelectorAll('.addon-checkbox:checked');
+    checkboxes.forEach(cb => {
+        totalUnitPrice += parseFloat(cb.getAttribute('data-price'));
+    });
+
+    const total = totalUnitPrice * currentModalQty;
+    document.getElementById('item-modal-price').textContent = `R$ ${total.toFixed(2).replace('.', ',')}`;
+}
+
+function confirmItemOptions() {
+    if (!currentModalItem) return;
+
+    const obs = document.getElementById('item-modal-obs').value.trim();
+
+    // Coleta addons selecionados
+    // Coleta addons selecionados
+    const selectedAddons = [];
+    let extraPrice = 0;
+    document.querySelectorAll('.addon-checkbox:checked').forEach(cb => {
+        const id = cb.getAttribute('data-id');
+        const name = cb.getAttribute('data-name');
+        const price = parseFloat(cb.getAttribute('data-price'));
+        selectedAddons.push({ id, name, price });
+        extraPrice += price;
+    });
+
+    const finalUnitPrice = currentModalItem.price + extraPrice;
+
+    // Create unique cart identifier based on product ID + Date to allow multiple equal products with different addons
+    const cartItemId = currentModalItem.id + '_' + Date.now();
+
+    const cartItem = {
+        id: cartItemId,
+        productId: currentModalItem.id,
+        name: currentModalItem.name,
+        price: finalUnitPrice,
+        qty: currentModalQty,
+        obs: obs,
+        addons: selectedAddons
+    };
+
+    clientCart.push(cartItem);
+
     updateCartUI();
-    renderMenu(getCurrentCategory());
+    closeItemModal();
 }
 
 function changeQty(productId, delta) {
@@ -287,16 +362,20 @@ function renderCartItems() {
     if (footer) footer.style.display = 'block';
 
     container.innerHTML = clientCart.map(item => `
-        <div class="cart-item">
-            <div class="cart-item-info">
-                <span class="cart-item-name">${item.name}</span>
-                <span class="cart-item-price">R$ ${(item.price * item.qty).toFixed(2).replace('.', ',')}</span>
+        <div class="cart-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                <div class="cart-item-info">
+                    <span class="cart-item-name">${item.name}</span>
+                    <span class="cart-item-price">R$ ${(item.price * item.qty).toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div class="cart-item-controls">
+                    <button class="qty-btn-sm" onclick="changeQty('${item.id}', -1)">−</button>
+                    <span>${item.qty}</span>
+                    <button class="qty-btn-sm" onclick="changeQty('${item.id}', 1)">+</button>
+                </div>
             </div>
-            <div class="cart-item-controls">
-                <button class="qty-btn-sm" onclick="changeQty('${item.id}', -1)">−</button>
-                <span>${item.qty}</span>
-                <button class="qty-btn-sm" onclick="changeQty('${item.id}', 1)">+</button>
-            </div>
+            ${item.addons && item.addons.length > 0 ? `<div style="font-size:0.8rem; color:var(--color-text-muted);">+ ${item.addons.map(a => a.name).join(', ')}</div>` : ''}
+            ${item.obs ? `<div style="font-size:0.8rem; color:var(--warning-color);">* Obs: ${item.obs}</div>` : ''}
         </div>
     `).join('');
 
@@ -344,12 +423,47 @@ function goToCheckout() {
     const taxaLine = document.getElementById('taxa-line');
     if (taxaLine) taxaLine.style.display = 'none';
 
-    // Clear inputs
+    // Clear inputs first
     const inputs = ['nome-input', 'whatsapp-input', 'endereco-input', 'mesa-input', 'troco-input'];
     inputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+
+    // Load saved profile if available
+    try {
+        const savedProfile = localStorage.getItem('lacasa_client_profile');
+        if (savedProfile) {
+            const profile = JSON.parse(savedProfile);
+            if (profile.nome) document.getElementById('nome-input').value = profile.nome;
+            if (profile.whatsapp) document.getElementById('whatsapp-input').value = profile.whatsapp;
+
+            // Populate Dropdown for Entrega
+            const addrSelect = document.getElementById('endereco-selecionado');
+            if (addrSelect) {
+                addrSelect.innerHTML = '<option value="">Selecione um endereço salvo...</option>';
+                let hasAddresses = false;
+
+                // Prioritize 'enderecos' array, but fallback to 'endereco' string
+                const addresses = (profile.enderecos && Array.isArray(profile.enderecos)) ? profile.enderecos : (profile.endereco ? [profile.endereco] : []);
+
+                if (addresses.length > 0) {
+                    addresses.forEach((addr, idx) => {
+                        if (!addr) return;
+                        hasAddresses = true;
+                        const opt = document.createElement('option');
+                        opt.value = addr;
+                        opt.textContent = addr.substring(0, 40) + (addr.length > 40 ? '...' : '');
+                        addrSelect.appendChild(opt);
+                    });
+                }
+
+                addrSelect.style.display = hasAddresses ? 'block' : 'none';
+            }
+        }
+    } catch (e) {
+        console.warn('Erro ao carregar perfil salvo no checkout:', e);
+    }
 
     document.getElementById('checkout-modal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -365,16 +479,44 @@ function selectTipo(tipo) {
     document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('active'));
     document.querySelector(`.tipo-btn[data-tipo="${tipo}"]`).classList.add('active');
 
-    document.getElementById('endereco-section').style.display = tipo === 'entrega' ? 'block' : 'none';
-    document.getElementById('mesa-section').style.display = tipo === 'local' ? 'block' : 'none';
-
-    // Taxa de entrega
+    // UI Updates based on Tipo
+    const addressSection = document.getElementById('endereco-section');
+    const mesaSection = document.getElementById('mesa-section');
+    const storeAddressSection = document.getElementById('store-address-display');
+    const whatsappSection = document.getElementById('whatsapp-section');
     const taxaLine = document.getElementById('taxa-line');
+
+    // Reset visibility
+    if (addressSection) addressSection.style.display = 'none';
+    if (mesaSection) mesaSection.style.display = 'none';
+    if (storeAddressSection) storeAddressSection.style.display = 'none';
+    if (whatsappSection) whatsappSection.style.display = 'block'; // Default to visible
+    if (taxaLine) taxaLine.style.display = 'none';
+
     if (tipo === 'entrega') {
-        taxaLine.style.display = 'flex';
-        document.getElementById('checkout-taxa').textContent = 'A combinar';
-    } else {
-        taxaLine.style.display = 'none';
+        if (addressSection) addressSection.style.display = 'block';
+        if (taxaLine) {
+            taxaLine.style.display = 'flex';
+            document.getElementById('checkout-taxa').textContent = 'A combinar';
+        }
+    } else if (tipo === 'local') {
+        if (mesaSection) mesaSection.style.display = 'block';
+        if (whatsappSection) whatsappSection.style.display = 'none'; // Not needed for local
+    } else if (tipo === 'retirada') {
+        if (storeAddressSection) {
+            storeAddressSection.style.display = 'block';
+            // Fetch store address
+            if (typeof FireDB !== 'undefined') {
+                FireDB.loadSettings().then(settings => {
+                    const addrInfo = document.getElementById('store-address-info');
+                    if (addrInfo) {
+                        addrInfo.innerHTML = settings?.storeAddress
+                            ? `<strong>Nosso Endereço:</strong><br>${settings.storeAddress}`
+                            : '<em>Endereço da loja indisponível no momento.</em>';
+                    }
+                }).catch(() => { });
+            }
+        }
     }
 }
 
@@ -387,8 +529,10 @@ function selectPay(pay) {
 }
 
 async function submitOrder() {
-    const nome = document.getElementById('nome-input').value.trim();
-    const whatsapp = document.getElementById('whatsapp-input').value.trim();
+    const nome = document.getElementById('nome-input')?.value.trim();
+    const whatsapp = document.getElementById('whatsapp-input')?.value.trim();
+    const isEntrega = selectedTipo === 'entrega';
+    const isLocal = selectedTipo === 'local';
 
     if (!nome) {
         alert('Por favor, preencha seu nome.');
@@ -396,36 +540,100 @@ async function submitOrder() {
         return;
     }
 
-    if (!whatsapp) {
+    if (!isLocal && !whatsapp) {
         alert('Por favor, preencha seu WhatsApp.');
         document.getElementById('whatsapp-input').focus();
         return;
     }
 
-    if (selectedTipo === 'entrega') {
-        const endereco = document.getElementById('endereco-input').value.trim();
-        if (!endereco) {
-            alert('Por favor, preencha o endereço de entrega.');
-            document.getElementById('endereco-input').focus();
+    let enderecoFinal = null;
+    if (isEntrega) {
+        const enderecoValue = document.getElementById('endereco-input')?.value;
+        const enderecoSelect = document.getElementById('endereco-selecionado');
+        const enderecoSelecionado = enderecoSelect && enderecoSelect.style.display !== 'none' ? enderecoSelect.value : '';
+
+        enderecoFinal = enderecoValue || enderecoSelecionado;
+
+        if (!enderecoFinal || enderecoFinal.trim() === '') {
+            alert('Por favor, selecione ou digite um endereço de entrega válido.');
             return;
         }
+        enderecoFinal = enderecoFinal.trim();
     }
 
     const subtotal = clientCart.reduce((sum, c) => sum + (c.price * c.qty), 0);
+    let pixPayloadUrl = null;
+
+    if (selectedPay === 'Pix') {
+        try {
+            const settings = await FireDB.loadSettings();
+            if (settings && settings.pixKey) {
+                const txid = `PEDIDO`;
+                pixPayloadUrl = generatePixBrCode(settings.pixKey, subtotal, settings.pixMerchantName || 'La Casa de Pastel', settings.pixMerchantCity || 'SAO PAULO', txid);
+            }
+        } catch (e) {
+            console.warn("Could not generate Pix payload:", e);
+        }
+    }
+
+    // Generate a random password if 'local'
+    let generatedSenha = null;
+    if (isLocal) {
+        // Generate a 4 digit code
+        generatedSenha = Math.floor(1000 + Math.random() * 9000).toString();
+    }
 
     const order = {
-        items: clientCart.map(c => ({ id: c.id, name: c.name, price: c.price, qty: c.qty })),
+        items: clientCart.map(c => ({
+            id: c.id,
+            productId: c.productId,
+            name: c.name,
+            price: c.price,
+            qty: c.qty,
+            obs: c.obs || null,
+            addons: c.addons || []
+        })),
         total: subtotal,
         tipo: selectedTipo,
         pagamento: selectedPay,
-        contato: `${nome} - ${whatsapp}`,
+        contato: isLocal ? nome : `${nome} - ${whatsapp}`,
         nome: nome,
-        whatsapp: whatsapp,
-        endereco: selectedTipo === 'entrega' ? document.getElementById('endereco-input').value.trim() : null,
-        mesa: selectedTipo === 'local' ? document.getElementById('mesa-input').value.trim() : null,
-        trocoParaValor: selectedPay === 'Dinheiro' ? parseFloat(document.getElementById('troco-input').value) || null : null,
-        status: 'pendente'
+        whatsapp: isLocal ? null : whatsapp,
+        endereco: isEntrega ? enderecoFinal : null,
+        mesa: isLocal ? document.getElementById('mesa-input')?.value.trim() || null : null,
+        senhaGerada: generatedSenha, // This will be handled differently in PDV later, but good to store
+        trocoParaValor: selectedPay === 'Dinheiro' ? parseFloat(document.getElementById('troco-input')?.value) || null : null,
+        status: 'pendente',
+        fcmToken: null,
+        isOnline: true,
+        pixPayload: pixPayloadUrl,
+        obsPedido: document.getElementById('obs-pedido-input')?.value.trim() || null
     };
+
+    // Tenta obter o token de notificação para atrelar ao pedido
+    try {
+        if (typeof FireDB.requestNotificationPermission === 'function') {
+            const token = await FireDB.requestNotificationPermission();
+            if (token) {
+                order.fcmToken = token;
+                console.log("Token FCM atrelado ao pedido.");
+            }
+        }
+    } catch (e) {
+        console.warn("Erro ao obter token FCM durante o checkout:", e);
+    }
+
+    // Save profile for future orders
+    try {
+        const profile = {
+            nome: order.nome,
+            whatsapp: order.whatsapp,
+            endereco: order.endereco || ''
+        };
+        localStorage.setItem('lacasa_client_profile', JSON.stringify(profile));
+    } catch (e) {
+        console.warn('Erro ao salvar perfil:', e);
+    }
 
     // Checa auto-approve
     try {
@@ -474,11 +682,15 @@ function showTracking(orderId) {
     // Escuta mudanças no pedido
     if (trackingUnsub) trackingUnsub();
     trackingUnsub = FireDB.onOrderStatus(orderId, (data) => {
-        renderTrackingSteps(data.status);
+        renderTrackingSteps(data);
     });
+
+    // Pede permissão para notificações de navegador
+    requestNotificationPermission();
 }
 
-function renderTrackingSteps(currentStatus) {
+function renderTrackingSteps(orderData) {
+    const currentStatus = orderData.status;
     const steps = ['pendente', 'aprovado', 'preparando', 'pronto', 'entregue'];
     const labels = {
         pendente: { icon: 'fa-clock', text: 'Aguardando aprovação' },
@@ -512,7 +724,29 @@ function renderTrackingSteps(currentStatus) {
     };
     msgEl.textContent = messages[currentStatus] || '';
 
-    container.innerHTML = steps.map((step, idx) => {
+    // --- Notificações em Tempo Real (Browser) ---
+    const lastStatus = container.getAttribute('data-last-status');
+    const lastMsg = container.getAttribute('data-last-msg');
+    if (lastStatus && lastStatus !== currentStatus && currentStatus !== 'pendente') {
+        notifyClient("Atualização do Pedido", `Seu pedido passou para: ${labels[currentStatus]?.text || currentStatus}`);
+    }
+    if (orderData.lastMessage && lastMsg !== orderData.lastMessage) {
+        notifyClient("Nova Mensagem da Loja", orderData.lastMessage);
+    }
+    container.setAttribute('data-last-status', currentStatus);
+    container.setAttribute('data-last-msg', orderData.lastMessage || '');
+
+    let html = `
+        <!-- Mensagem Direta (Destaque) -->
+        ${orderData.lastMessage ? `
+            <div style="background:rgba(229,9,20,0.1); border:1px solid var(--color-primary); padding:12px; border-radius:8px; margin-bottom:20px; animation: slideIn 0.3s ease-out; text-align:left;">
+                <p style="font-size:0.7rem; color:var(--color-primary); margin-bottom:4px; font-weight:bold; text-transform:uppercase;">Mensagem da Loja:</p>
+                <p style="font-size:0.95rem; color:white; font-weight:500;">${orderData.lastMessage}</p>
+            </div>
+        ` : ''}
+    `;
+
+    html += steps.map((step, idx) => {
         const info = labels[step];
         let stateClass = 'pending';
         if (idx < currentIdx) stateClass = 'done';
@@ -524,6 +758,26 @@ function renderTrackingSteps(currentStatus) {
             </div>
         `;
     }).join('');
+
+    // Se houver Payload Pix, renderiza bloco para Copiar
+    if (orderData.pixPayload) {
+        html += `
+            <div style="margin-top: 20px; padding: 15px; background: rgba(50, 188, 173, 0.1); border: 1px solid #32bcad; border-radius: 8px; text-align: center;">
+                <p style="font-size: 0.9rem; font-weight: bold; color: #32bcad; margin-bottom: 8px;">
+                    <i class="fa-brands fa-pix"></i> PIX COPIA E COLA
+                </p>
+                <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 10px;">
+                    Toque no código abaixo para copiar e pague no app do seu banco.
+                </p>
+                <div onclick="navigator.clipboard.writeText('${orderData.pixPayload}').then(()=>alert('Pix copiado!'))" 
+                     style="font-size: 0.75rem; word-break: break-all; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 5px; cursor: pointer; color: white;">
+                    ${orderData.pixPayload}
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
 }
 
 function resetToMenu() {
@@ -566,4 +820,318 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderMenu();
         }
     }
+
+    // Check Notification Permission
+    setTimeout(checkNotificationPermission, 2500);
 });
+
+// ============================================================
+// --- PERFIL DO CLIENTE & ENDEREÇOS ---
+// ============================================================
+// --- NAVEGAÇÃO SPA (VIEWS) ---
+// ============================================================
+
+function switchView(viewName) {
+    // Esconde todas as views
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    // Mostra a view desejada
+    const target = document.getElementById(`view-${viewName}`);
+    if (target) target.classList.add('active');
+
+    // Atualiza Bottom Nav
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const navItem = document.getElementById(`nav-${viewName}`);
+    if (navItem) navItem.classList.add('active');
+
+    // Se for perfil, carrega os dados
+    if (viewName === 'profile') {
+        loadProfileToView();
+    }
+}
+
+// ============================================================
+// --- PERFIL DO CLIENTE & ENDEREÇOS (SPA) ---
+// ============================================================
+
+let currentAddresses = [];
+
+function loadProfileToView() {
+    try {
+        const savedProfile = localStorage.getItem('lacasa_client_profile');
+        if (savedProfile) {
+            const profile = JSON.parse(savedProfile);
+            const nomeEl = document.getElementById('profile-nome');
+            const whatsappEl = document.getElementById('profile-whatsapp');
+
+            if (nomeEl && profile.nome) nomeEl.value = profile.nome;
+            if (whatsappEl && profile.whatsapp) whatsappEl.value = profile.whatsapp;
+
+            if (profile.enderecos && Array.isArray(profile.enderecos)) {
+                currentAddresses = [...profile.enderecos];
+            } else if (profile.endereco) {
+                currentAddresses = [profile.endereco];
+            } else {
+                currentAddresses = [];
+            }
+        }
+    } catch (e) { console.warn("Erro ao carregar perfil para View", e); }
+    renderProfileAddresses();
+}
+
+function renderProfileAddresses() {
+    const container = document.getElementById('profile-addresses-container');
+    if (!container) return;
+
+    if (currentAddresses.length === 0) {
+        container.innerHTML = '<p style="font-size:0.85rem; color:var(--color-text-muted); text-align:center; padding:10px;">Nenhum endereço salvo.</p>';
+        return;
+    }
+
+    container.innerHTML = currentAddresses.map((addr, idx) => `
+        <div class="address-hub-item">
+            <input type="text" class="checkout-input addr-input-field" value="${addr}" placeholder="Rua, número, bairro..." style="flex:1;">
+            <button type="button" class="btn-remove-addr" onclick="removeAddressField(${idx})">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function addNewAddressField() {
+    currentAddresses.push('');
+    renderProfileAddresses();
+}
+
+function removeAddressField(idx) {
+    currentAddresses.splice(idx, 1);
+    renderProfileAddresses();
+}
+
+function saveProfileSetup() {
+    const nomeEl = document.getElementById('profile-nome');
+    const whatsappEl = document.getElementById('profile-whatsapp');
+
+    const nome = nomeEl ? nomeEl.value.trim() : '';
+    const whatsapp = whatsappEl ? whatsappEl.value.trim() : '';
+
+    // Coletar endereços dos inputs reais
+    const addrInputs = document.querySelectorAll('.addr-input-field');
+    const updatedAddresses = [];
+    addrInputs.forEach(input => {
+        const val = input.value.trim();
+        if (val) updatedAddresses.push(val);
+    });
+
+    if (!nome && !whatsapp && updatedAddresses.length === 0) {
+        alert('Preencha ao menos um campo para salvar.');
+        return;
+    }
+
+    const profile = {
+        nome,
+        whatsapp,
+        enderecos: updatedAddresses
+    };
+
+    localStorage.setItem('lacasa_client_profile', JSON.stringify(profile));
+    currentAddresses = updatedAddresses;
+
+    alert('Perfil atualizado com sucesso!');
+    switchView('menu'); // Volta pro cardápio após salvar
+}
+
+// Helper para pegar location e transformar em string aproximada, serve pro modal de Checkout E View de Perfil
+function getLocationAndFill(forCheckout = true) {
+    if (!navigator.geolocation) {
+        alert("Geolocalização não é suportada.");
+        return;
+    }
+
+    const statusEl = document.getElementById(forCheckout ? 'geo-status-checkout' : 'geo-status-profile');
+    if (statusEl) {
+        statusEl.style.display = 'block';
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
+                const data = await response.json();
+
+                let addrStr = '';
+                if (data && data.address) {
+                    const road = data.address.road || '';
+                    const suburb = data.address.suburb || data.address.neighbourhood || '';
+                    const city = data.address.city || data.address.town || '';
+                    addrStr = `${road}, S/N, ${suburb}, ${city}`;
+                } else {
+                    addrStr = `GPS: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                }
+
+                if (forCheckout) {
+                    const el = document.getElementById('endereco-input');
+                    if (el) el.value = addrStr;
+                } else {
+                    currentAddresses.push(addrStr);
+                    renderProfileAddresses();
+                }
+
+                if (statusEl) statusEl.style.display = 'none';
+            } catch (error) {
+                console.error("Erro GPS:", error);
+                if (statusEl) statusEl.style.display = 'none';
+                const fallback = `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
+                if (forCheckout) {
+                    document.getElementById('endereco-input').value = fallback;
+                } else {
+                    currentAddresses.push(fallback);
+                    renderProfileAddresses();
+                }
+            }
+        },
+        () => {
+            if (statusEl) statusEl.style.display = 'none';
+            alert("Não conseguimos acessar sua localização.");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+}
+
+// ============================================================
+// --- NOTIFICAÇÕES (FCM) ---
+// ============================================================
+
+function checkNotificationPermission() {
+    // Só mostra se for suportado e não tiver sido negado permanentemente
+    if (!('Notification' in window)) return;
+
+    const banner = document.getElementById('notification-banner');
+    const dismissed = localStorage.getItem('lacasa_fcm_dismissed');
+
+    if (Notification.permission === 'default' && !dismissed) {
+        // Primeira vez ou ainda não decidiu
+        if (banner) banner.style.display = 'block';
+    } else if (Notification.permission === 'granted') {
+        // Já tem permissão, tenta pegar o token preventivamente
+        if (typeof FireDB !== 'undefined' && typeof FireDB.requestNotificationPermission === 'function') {
+            FireDB.requestNotificationPermission().then(token => {
+                if (token) console.log("Token FCM já garantido na inicialização.");
+            }).catch(e => console.log("FCM silenciado", e));
+        }
+    }
+}
+
+function dismissNotificationBanner() {
+    const banner = document.getElementById('notification-banner');
+    if (banner) banner.style.display = 'none';
+    localStorage.setItem('lacasa_fcm_dismissed', 'true');
+}
+
+async function requestNotificationPermission() {
+    const banner = document.getElementById('notification-banner');
+    if (banner) banner.style.display = 'none';
+
+    try {
+        if (typeof FireDB !== 'undefined' && typeof FireDB.requestNotificationPermission === 'function') {
+            const token = await FireDB.requestNotificationPermission();
+            if (token) {
+                alert("Notificações ativadas com sucesso! Você receberá atualizações sobre seus pedidos.");
+            } else {
+                alert("Não foi possível ativar as notificações (permissão não concedida).");
+            }
+        }
+    } catch (e) {
+        console.warn("Erro ao pedir notificação", e);
+        alert("Erro ao pedir ativação de notificações. Verifique as configurações do seu navegador.");
+    }
+}
+
+// ============================================================
+// --- PIX BR CODE (EMV QR Code — Padrão Banco Central) ---
+// ============================================================
+
+/**
+ * Calcula CRC16-CCITT (0xFFFF) — obrigatório no payload BR Code
+ */
+function crc16(str) {
+    let crc = 0xFFFF;
+    for (let i = 0; i < str.length; i++) {
+        crc ^= (str.charCodeAt(i) << 8);
+        for (let j = 0; j < 8; j++) {
+            crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+            crc &= 0xFFFF;
+        }
+    }
+    return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+/**
+ * Monta um campo EMV: ID (2 dígitos) + tamanho (2 dígitos) + valor
+ */
+function emvField(id, value) {
+    const len = String(value.length).padStart(2, '0');
+    return `${id}${len}${value}`;
+}
+
+/**
+ * Gera o payload completo do Pix BR Code com valor dinâmico.
+ */
+function generatePixBrCode(pixKey, amount, name, city, txid, desc = '') {
+    // Sanitiza strings
+    const safeName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').substring(0, 25).trim();
+    const safeCity = city.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().substring(0, 15).trim();
+    const safeTxid = (txid || '***').replace(/[^a-zA-Z0-9]/g, '').substring(0, 25) || '***';
+
+    // Formata valor com 2 casas decimais obrigatoriamente
+    const safeAmount = parseFloat(amount).toFixed(2);
+
+    // ID 26: Informações da conta remetente (Merchant Account Information)
+    // GUI padrao Banco Central + Chave + Descrição(Opcional)
+    const gui = emvField('00', 'br.gov.bcb.pix');
+    const key = emvField('01', pixKey);
+    const description = desc ? emvField('02', desc.substring(0, 40)) : '';
+    const accountInfo = emvField('26', gui + key + description);
+
+    // Constrói payload inicial
+    const payload = [
+        emvField('00', '01'),                       // 00: Payload Format Indicator (01)
+        emvField('01', '11'),                       // 01: Point of Initiation Method (11 = Estático, permite reuso)
+        accountInfo,                                // 26: Merchant Account Information
+        emvField('52', '0000'),                     // 52: Merchant Category Code (0000 = Não informado)
+        emvField('53', '156'),                      // 53: Transaction Currency (156 = BRL)
+        emvField('54', safeAmount),                 // 54: Transaction Amount
+        emvField('58', 'BR'),                       // 58: Country Code (BR)
+        emvField('59', safeName),                   // 59: Merchant Name
+        emvField('60', safeCity),                   // 60: Merchant City
+        emvField('62', emvField('05', safeTxid))    // 62: Additional Data Field (TxId)
+    ].join('');
+
+    // Adiciona o field 63 (CRC) - O valor deve ser incluído no cálculo
+    const payloadForCrc = payload + '6304';
+    const crc = crc16(payloadForCrc);
+
+    return payloadForCrc + crc;
+}
+
+function notifyClient(title, body) {
+    if ("Notification" in window && Notification.permission === "granted") {
+        try {
+            new Notification(title, { 
+                body, 
+                icon: '/cliente/icon-192.png',
+                badge: '/cliente/icon-192.png'
+            });
+        } catch (e) { console.warn("Erro ao disparar notificação:", e); }
+    }
+    if (navigator.vibrate) {
+        try { navigator.vibrate([200, 100, 200]); } catch (e) {}
+    }
+}
+
+function requestNotificationPermission() {
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
+}

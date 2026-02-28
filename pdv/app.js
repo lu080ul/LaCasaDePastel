@@ -46,6 +46,9 @@ let printQueue = [];
 window.addEventListener('afterprint', () => {
     if (printQueue.length > 0) {
         setTimeout(processPrintQueue, 500); // Dá um fôlego para o SO antes da próxima janela
+    } else if (typeof isOrderFinalized !== 'undefined' && isOrderFinalized) {
+        // Se a fila de impressão terminou e tínhamos finalizado um pedido, inicia um novo pedido
+        startNewOrder();
     }
 });
 
@@ -100,6 +103,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const toggle = document.getElementById('auto-approve-toggle');
                     if (toggle) toggle.checked = settings.autoApprove;
                 }
+                // Sync store address if remote exists
+                if (settings?.storeAddress) {
+                    localStorage.setItem('lacasa_store_address', settings.storeAddress);
+                    const addressEl = document.getElementById('store-address-input');
+                    if (addressEl && !addressEl.value) {
+                        addressEl.value = settings.storeAddress;
+                    }
+                }
                 // Atualiza modo da loja se mudou remotamente
                 if (settings?.storeMode) {
                     setStoreManual(settings.storeMode);
@@ -115,6 +126,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Diagnóstico Firebase
     runFirebaseDiagnostic();
+
+    // Detecta se está rodando no Electron para mostrar o painel de atualização
+    if (typeof process !== 'undefined' && process.versions && process.versions.electron) {
+        document.getElementById('update-panel').style.display = 'block';
+    }
 });
 
 // Navegação de Abas
@@ -179,6 +195,9 @@ async function loadData() {
     const savedMerchantCity = localStorage.getItem('lacasa_merchant_city');
     if (savedMerchantCity) document.getElementById('pix-merchant-city').value = savedMerchantCity;
 
+    const savedStoreAddress = localStorage.getItem('lacasa_store_address');
+    if (savedStoreAddress) document.getElementById('store-address-input').value = savedStoreAddress;
+
     loadReceiptConfig();
 
     // Carregar Histórico
@@ -242,6 +261,7 @@ function renderProducts(filterText = '') {
     // Filtrar por texto e exibir apenas produtos Ativos (active não falso)
     const filtered = products.filter(p =>
         p.active !== false &&
+        p.isAddon !== true &&
         p.name.toLowerCase().includes(filterText.toLowerCase())
     );
 
@@ -251,11 +271,10 @@ function renderProducts(filterText = '') {
 
         const card = document.createElement('div');
         card.className = `product-card ${isOut ? 'stock-out' : ''}`;
-        card.style.backgroundColor = p.color;
+        card.style.backgroundColor = 'var(--bg-panel)';
         card.onclick = () => !isOut && addToCart(p.id);
 
         card.innerHTML = `
-            <i class="${p.icon} product-icon" style="color: ${isOut ? '#555' : 'var(--color-primary)'}"></i>
             <span class="product-name">${p.name}</span>
             <span class="product-price">R$ ${p.price.toFixed(2).replace('.', ',')}</span>
             <span class="product-stock ${isLow ? 'stock-low' : ''}">${isOut ? 'ESGOTADO' : 'Estoque: ' + p.stock}</span>
@@ -271,6 +290,12 @@ function filterProducts() {
 
 // --- Carrinho ---
 
+// ============================================================
+// --- PDV ITEM MODAL ---
+// ============================================================
+let currentPdvModalItem = null;
+let currentPdvModalQty = 1;
+
 function addToCart(productId) {
     if (isOrderFinalized) {
         startNewOrder();
@@ -279,44 +304,132 @@ function addToCart(productId) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
 
-    const cartItem = cart.find(item => item.id === productId);
+    if (product.stock < 1) {
+        alert("Estoque esgotado!");
+        return;
+    }
 
-    // Verifica Estoque
-    const currentQtyInCart = cartItem ? cartItem.qty : 0;
-    if (currentQtyInCart + 1 > product.stock) {
+    currentPdvModalItem = product;
+    currentPdvModalQty = 1;
+
+    document.getElementById('pdv-item-modal-title').textContent = product.name;
+    document.getElementById('pdv-item-modal-desc').textContent = product.category;
+    document.getElementById('pdv-item-modal-obs').value = '';
+    document.getElementById('pdv-item-modal-qty').textContent = currentPdvModalQty;
+
+    const addonsContainer = document.getElementById('pdv-item-modal-addons');
+    addonsContainer.innerHTML = '';
+
+    const availableAddons = products.filter(p => p.isAddon === true && p.active !== false && p.stock > 0);
+
+    if (availableAddons.length > 0) {
+        let addonsHTML = '<p style="font-weight:bold; margin-bottom:5px;">Adicionais Disponíveis</p>';
+        availableAddons.forEach((addon, idx) => {
+            addonsHTML += `
+                <label style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-dark); padding:10px; border-radius:6px; margin-bottom:6px; cursor:pointer; border: 1px solid var(--border-color);">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" class="pdv-addon-checkbox" data-id="${addon.id}" data-name="${addon.name}" data-price="${addon.price}" onchange="updatePdvItemModalPrice()" style="width:18px; height:18px; accent-color:var(--success-color);">
+                        <span>${addon.name}</span>
+                    </div>
+                    <span style="color:var(--success-color);">+ R$ ${addon.price.toFixed(2).replace('.', ',')}</span>
+                </label>
+            `;
+        });
+        addonsContainer.innerHTML = addonsHTML;
+    }
+
+    updatePdvItemModalPrice();
+    document.getElementById('pdv-item-modal').style.display = 'flex';
+}
+
+function closePdvItemModal() {
+    document.getElementById('pdv-item-modal').style.display = 'none';
+    currentPdvModalItem = null;
+}
+
+function changePdvItemModalQty(delta) {
+    if (!currentPdvModalItem) return;
+
+    if (delta > 0 && currentPdvModalQty + delta > currentPdvModalItem.stock) {
         alert("Estoque insuficiente!");
         return;
     }
 
-    if (cartItem) {
-        cartItem.qty++;
-    } else {
-        cart.push({ ...product, qty: 1 });
-    }
+    currentPdvModalQty += delta;
+    if (currentPdvModalQty < 1) currentPdvModalQty = 1;
 
-    updateCartUI();
+    document.getElementById('pdv-item-modal-qty').textContent = currentPdvModalQty;
+    updatePdvItemModalPrice();
 }
 
-function updateCartQty(productId, delta) {
-    const itemIndex = cart.findIndex(item => item.id === productId);
-    if (itemIndex > -1) {
-        const product = products.find(p => p.id === productId);
+function updatePdvItemModalPrice() {
+    if (!currentPdvModalItem) return;
 
-        if (delta > 0 && cart[itemIndex].qty + delta > product.stock) {
+    let totalUnitPrice = currentPdvModalItem.price;
+    const checkboxes = document.querySelectorAll('.pdv-addon-checkbox:checked');
+    checkboxes.forEach(cb => {
+        totalUnitPrice += parseFloat(cb.getAttribute('data-price'));
+    });
+
+    const total = totalUnitPrice * currentPdvModalQty;
+    document.getElementById('pdv-item-modal-price').textContent = `R$ ${total.toFixed(2).replace('.', ',')}`;
+}
+
+function confirmPdvItemOptions() {
+    if (!currentPdvModalItem) return;
+
+    const obs = document.getElementById('pdv-item-modal-obs').value.trim();
+
+    const selectedAddons = [];
+    let extraPrice = 0;
+    document.querySelectorAll('.pdv-addon-checkbox:checked').forEach(cb => {
+        const id = cb.getAttribute('data-id');
+        const name = cb.getAttribute('data-name');
+        const price = parseFloat(cb.getAttribute('data-price'));
+        selectedAddons.push({ id, name, price });
+        extraPrice += price;
+    });
+
+    const finalUnitPrice = currentPdvModalItem.price + extraPrice;
+    const cartItemId = currentPdvModalItem.id + '_' + Date.now();
+
+    const cartItem = {
+        id: cartItemId,
+        productId: currentPdvModalItem.id,
+        name: currentPdvModalItem.name,
+        price: finalUnitPrice,
+        qty: currentPdvModalQty,
+        obs: obs,
+        addons: selectedAddons
+    };
+
+    cart.push(cartItem);
+
+    updateCartUI();
+    closePdvItemModal();
+}
+
+function updateCartQty(cartItemId, delta) {
+    const itemIndex = cart.findIndex(item => String(item.id) === String(cartItemId));
+    if (itemIndex > -1) {
+        const item = cart[itemIndex];
+        const product = products.find(p => p.id === (item.productId || item.id));
+
+        if (delta > 0 && product && item.qty + delta > product.stock) {
             alert("Estoque insuficiente!");
             return;
         }
 
-        cart[itemIndex].qty += delta;
-        if (cart[itemIndex].qty <= 0) {
+        item.qty += delta;
+        if (item.qty <= 0) {
             cart.splice(itemIndex, 1);
         }
     }
     updateCartUI();
 }
 
-function removeFromCart(productId) {
-    cart = cart.filter(item => item.id !== productId);
+function removeFromCart(cartItemId) {
+    cart = cart.filter(item => String(item.id) !== String(cartItemId));
     updateCartUI();
 }
 
@@ -350,7 +463,7 @@ function updateCartUI() {
         container.innerHTML = '<div class="empty-cart-msg">O carrinho está vazio</div>';
         orderTotalCost = 0;
         document.getElementById('cart-total').innerText = 'R$ 0,00';
-        updatePayments();
+        updateChange();
         return;
     }
 
@@ -364,14 +477,19 @@ function updateCartUI() {
         div.className = 'cart-item';
         div.innerHTML = `
             <div class="item-info">
-                <span class="item-name">${item.name}</span>
+                <span class="item-name">${item.name} 
+                    ${item.addons && item.addons.length > 0 ? `<br><small style="color:var(--text-color); opacity:0.8; font-size:0.8rem;">+ ${item.addons.map(a => a.name).join(', ')}</small>` : ''}
+                    ${item.obs ? `<br><small style="color:var(--warning-color); font-size:0.8rem;">* Obs: ${item.obs}</small>` : ''}
+                </span>
                 <span class="item-price">${item.qty}x R$ ${item.price.toFixed(2).replace('.', ',')} = R$ ${itemTotal.toFixed(2).replace('.', ',')}</span>
             </div>
-            <div class="item-controls">
-                <button class="qty-btn" onclick="updateCartQty(${item.id}, -1)"><i class="fa-solid fa-minus"></i></button>
-                <span>${item.qty}</span>
-                <button class="qty-btn" onclick="updateCartQty(${item.id}, 1)"><i class="fa-solid fa-plus"></i></button>
-                <button class="qty-btn remove" onclick="removeFromCart(${item.id})"><i class="fa-solid fa-trash"></i></button>
+            <div class="item-controls" style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                <button class="qty-btn" style="background:#4b5563; color:white; width: 28px; border-radius: 4px;" title="Adicionar Observação" onclick="addObservationToCartItem('${item.id}')"><i class="fa-solid fa-comment-dots"></i></button>
+                <div style="width: 4px;"></div>
+                <button class="qty-btn" onclick="updateCartQty('${item.id}', -1)"><i class="fa-solid fa-minus"></i></button>
+                <span style="min-width: 15px; text-align: center;">${item.qty}</span>
+                <button class="qty-btn" onclick="updateCartQty('${item.id}', 1)"><i class="fa-solid fa-plus"></i></button>
+                <button class="qty-btn remove" onclick="removeFromCart('${item.id}')"><i class="fa-solid fa-trash"></i></button>
             </div>
         `;
         container.appendChild(div);
@@ -381,6 +499,17 @@ function updateCartUI() {
     const totalFmt = `R$ ${total.toFixed(2).replace('.', ',')}`;
     document.getElementById('cart-total').innerText = totalFmt;
     updateChange();
+}
+
+function addObservationToCartItem(productId) {
+    const item = cart.find(i => i.id === productId);
+    if (!item) return;
+
+    const obs = prompt(`Adicionar observação para ${item.name}:`, item.obs || '');
+    if (obs !== null) {
+        item.obs = obs.trim();
+        updateCartUI();
+    }
 }
 
 function selectPayment(method) {
@@ -479,10 +608,12 @@ function finalizeSale() {
         }
     }
 
-    completeSaleFlow(change, pixPayload);
+    const orderObs = document.getElementById('order-obs')?.value.trim() || null;
+
+    completeSaleFlow(change, pixPayload, orderObs);
 }
 
-function completeSaleFlow(change = 0, pixPayload = null) {
+function completeSaleFlow(change = 0, pixPayload = null, orderObs = null) {
     // Deduzir estoque
     cart.forEach(item => {
         const p = products.find(prod => prod.id === item.id);
@@ -498,7 +629,8 @@ function completeSaleFlow(change = 0, pixPayload = null) {
         senha: currentOrderNumber,
         pagamento: getPaymentsString(),
         troco: change,
-        pixPayload: pixPayload
+        pixPayload: pixPayload,
+        orderObs: orderObs
     };
 
     salesHistory.unshift(finalizedOrderData);
@@ -527,8 +659,9 @@ function startNewOrder() {
     cart = [];
     isOrderFinalized = false;
     finalizedOrderData = null;
-
     document.getElementById('pay-amount-input').value = '';
+    const obsInput = document.getElementById('order-obs');
+    if (obsInput) obsInput.value = '';
 
     document.getElementById('btn-nova-venda').style.display = 'none';
     document.getElementById('checkout-actions').style.display = 'flex';
@@ -571,6 +704,22 @@ function printSpecificReceiptFromHistory(type, senha) {
 function generateComandaHTML(orderData, isReprint = false) {
     const dateStr = new Date().toLocaleString('pt-BR');
     const senhaFmt = String(orderData.senha).padStart(3, '0');
+
+    // Dados do Cliente (se houver)
+    let clientInfoHTML = '';
+    if (orderData.nome || orderData.contato || orderData.tipo) {
+        const tipoText = orderData.tipo ? orderData.tipo.toUpperCase() : 'BALCÃO';
+        clientInfoHTML = `
+            <div style="border-bottom: 1px dashed black; margin-bottom: 10px; padding-bottom: 10px;">
+                <p style="margin:2px 0; font-weight:bold; font-size:16px;">[ TIPO: ${tipoText} ]</p>
+                ${orderData.nome ? `<p style="margin:2px 0;"><strong>Nome:</strong> ${orderData.nome}</p>` : ''}
+                ${(orderData.whatsapp || orderData.contato) ? `<p style="margin:2px 0;"><strong>Contato:</strong> ${orderData.whatsapp || orderData.contato}</p>` : ''}
+                ${orderData.endereco ? `<p style="margin:2px 0;"><strong>Endereço:</strong> ${orderData.endereco}</p>` : ''}
+                ${orderData.mesa ? `<p style="margin:2px 0;"><strong>Mesa:</strong> ${orderData.mesa}</p>` : ''}
+            </div>
+        `;
+    }
+
     return `
         <div class="receipt">
             <div class="receipt-header">
@@ -578,13 +727,25 @@ function generateComandaHTML(orderData, isReprint = false) {
                 <p>${isReprint ? 'Reimpressão - ' : ''}${dateStr}</p>
                 <div class="receipt-senha" style="font-size: 24px; font-weight: bold;">SENHA: ${senhaFmt}</div>
             </div>
+            
+            ${clientInfoHTML}
+
             <div class="receipt-body">
                 ${orderData.items.map(item => `
                     <div class="receipt-item" style="font-size: 18px; margin-bottom: 8px; font-weight: bold;">
                         <span>[ ${item.qty}x ] ${item.name}</span>
+                        ${item.addons && item.addons.length > 0 ? `<div style="font-size: 14px; font-weight: normal; margin-left: 15px; margin-top: 2px;">+ ${item.addons.map(a => a.name).join(', ')}</div>` : ''}
+                        ${item.obs ? `<div style="font-size: 14px; font-weight: normal; margin-left: 15px; margin-top: 2px;">* Obs: ${item.obs}</div>` : ''}
                     </div>
                 `).join('')}
             </div>
+            
+            ${(orderData.orderObs || orderData.obsPedido) ? `
+                <div style="border-top:1px dashed black; margin-top:10px; padding-top:10px;">
+                    <p style="margin:0; font-weight:bold; font-size:16px;">OBSERVAÇÃO DO PEDIDO:</p>
+                    <p style="margin:2px 0; font-size:15px;">${orderData.orderObs || orderData.obsPedido}</p>
+                </div>
+            ` : ''}
             <div style="text-align:center; border-top: 1px dashed black; margin-top:20px; padding-top:20px;">
                 *** CORTE / ENTREGAR NA COZINHA ***
             </div>
@@ -611,17 +772,44 @@ function generateCupomHTML(orderData, isReprint = false) {
         headerHTML = `<h2 style="font-size:20px;">${receiptName}</h2>`;
     }
 
-    // --- QR Code Pix (se houver payload) ---
+    // --- QR Code Pix ou Copia e Cola (se houver payload) ---
     let pixQrHTML = '';
     if (orderData.pixPayload) {
-        const qrUrl = pixPayloadToQrUrl(orderData.pixPayload, 200);
-        pixQrHTML = `
-            <div style="text-align:center; border-top:1px dashed black; margin-top:15px; padding-top:15px;">
-                <p style="font-size:11px; font-weight:bold; margin-bottom:6px; letter-spacing:1px;">PAGUE VIA PIX</p>
-                <img src="${qrUrl}" alt="QR Code Pix" data-preload
-                    style="width:160px; height:160px; display:block; margin:0 auto;">
-                <p style="font-size:8px; margin-top:4px; color:#555;">Escaneie com o app do seu banco</p>
-            </div>`;
+        if (orderData.isOnline) {
+            // Pedidos online mostram copia e cola porque n dá pra escanear a própria tela (impressão p/ motoboy)
+            pixQrHTML = `
+                <div style="text-align:center; border-top:1px dashed black; margin-top:15px; padding-top:15px;">
+                    <p style="font-size:11px; font-weight:bold; margin-bottom:6px; letter-spacing:1px;">PIX COPIA E COLA</p>
+                    <div style="font-size:9px; word-break:break-all; padding:8px; border:1px solid #ccc; background:#f9f9f9;">
+                        ${orderData.pixPayload}
+                    </div>
+                </div>`;
+        } else {
+            // Pedidos locais na loja mostram QR Code para o cliente escanear do balcão
+            const qrUrl = pixPayloadToQrUrl(orderData.pixPayload, 200);
+            pixQrHTML = `
+                 <div style="text-align:center; border-top:1px dashed black; margin-top:15px; padding-top:15px;">
+                     <p style="font-size:11px; font-weight:bold; margin-bottom:6px; letter-spacing:1px;">PAGUE VIA PIX</p>
+                     <img src="${qrUrl}" alt="QR Code Pix" data-preload
+                         style="width:160px; height:160px; display:block; margin:0 auto;">
+                     <p style="font-size:8px; margin-top:4px; color:#555;">Escaneie com o app do seu banco</p>
+                 </div>`;
+        }
+    }
+
+    // Dados do Cliente (se houver)
+    let clientInfoHTML = '';
+    if (orderData.nome || orderData.contato || orderData.tipo) {
+        const tipoText = orderData.tipo ? orderData.tipo.toUpperCase() : 'BALCÃO';
+        clientInfoHTML = `
+            <div style="border-bottom: 1px dashed black; margin-bottom: 10px; padding-bottom: 10px;">
+                <p style="margin:2px 0; font-weight:bold; font-size:14px;">[ TIPO: ${tipoText} ]</p>
+                ${orderData.nome ? `<p style="margin:2px 0; font-size:12px;"><strong>Nome:</strong> ${orderData.nome}</p>` : ''}
+                ${(orderData.whatsapp || orderData.contato) ? `<p style="margin:2px 0; font-size:12px;"><strong>Contato:</strong> ${orderData.whatsapp || orderData.contato}</p>` : ''}
+                ${orderData.endereco ? `<p style="margin:2px 0; font-size:12px;"><strong>Endereço:</strong> ${orderData.endereco}</p>` : ''}
+                ${orderData.mesa ? `<p style="margin:2px 0; font-size:12px;"><strong>Mesa:</strong> ${orderData.mesa}</p>` : ''}
+            </div>
+        `;
     }
 
     return `
@@ -631,6 +819,8 @@ function generateCupomHTML(orderData, isReprint = false) {
                 <p>${isReprint ? 'Reimpressão - ' : ''}${dateStr}</p>
             </div>
 
+            ${clientInfoHTML}
+
             <div class="receipt-senha" style="font-size:20px; font-weight:bold;">SENHA: ${senhaFmt}</div>
             <p><strong>Pgto:</strong> ${pgto}</p>
             ${valTroco > 0 ? `<p><strong>Troco:</strong> R$ ${valTroco.toFixed(2).replace('.', ',')}</p>` : ''}
@@ -638,12 +828,23 @@ function generateCupomHTML(orderData, isReprint = false) {
 
             <div class="receipt-body">
                 ${orderData.items.map(item => `
-                    <div class="receipt-item">
-                        <span>${item.qty}x ${item.name}</span>
-                        <span>R$ ${(item.price * item.qty).toFixed(2).replace('.', ',')}</span>
+                    <div class="receipt-item" style="flex-direction: column; align-items: flex-start;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>${item.qty}x ${item.name}</span>
+                            <span>R$ ${(item.price * item.qty).toFixed(2).replace('.', ',')}</span>
+                        </div>
+                        ${item.addons && item.addons.length > 0 ? `<div style="font-size: 0.8em; color: #555; margin-left: 15px;">+ ${item.addons.map(a => a.name).join(', ')}</div>` : ''}
+                        ${item.obs ? `<div style="font-size: 0.8em; color: #555; margin-left: 15px;">* Obs: ${item.obs}</div>` : ''}
                     </div>
                 `).join('')}
             </div>
+
+            ${(orderData.orderObs || orderData.obsPedido) ? `
+                <div style="border-top:1px dashed #ccc; margin-top:10px; padding-top:10px; font-size:0.9em;">
+                    <strong>Observação do Pedido:</strong><br>
+                    ${orderData.orderObs || orderData.obsPedido}
+                </div>
+            ` : ''}
 
             <div class="receipt-total">
                 TOTAL: R$ ${orderData.total.toFixed(2).replace('.', ',')}
@@ -666,6 +867,12 @@ function renderInventory(filterText = '') {
 
     const filtered = products.filter(p => p.name.toLowerCase().includes(filterText.toLowerCase()));
 
+    const datalist = document.getElementById('category-options');
+    if (datalist) {
+        const uniqueCategories = [...new Set(products.map(p => p.category))].filter(Boolean);
+        datalist.innerHTML = uniqueCategories.map(c => `<option value="${c}">`).join('');
+    }
+
     filtered.forEach(p => {
         const isActive = p.active !== false;
 
@@ -676,8 +883,8 @@ function renderInventory(filterText = '') {
                 <input type="checkbox" class="inventory-checkbox" value="${p.id}" onchange="updateBulkBar()">
             </td>
             <td>
-                <i class="${p.icon}" style="margin-right: 8px; color: ${isActive ? 'var(--color-primary)' : '#555'}"></i> 
                 ${p.name}
+                ${p.isAddon ? `<span style="margin-left:5px; font-size:0.7em; background:var(--warning-color); padding:2px 6px; border-radius:4px; color:black;">Adicional</span>` : ''}
             </td>
             <td>${p.category}</td>
             <td>R$ ${p.price.toFixed(2).replace('.', ',')}</td>
@@ -816,6 +1023,7 @@ function closeModal(modalId) {
     // Reseta propriedade oculta original ativa se houver
     document.getElementById('product-form').removeAttribute('data-active');
     document.getElementById('modal-product-title').innerText = 'Adicionar Produto';
+    document.getElementById('product-is-addon').checked = false;
 }
 
 function saveProduct(e) {
@@ -823,14 +1031,14 @@ function saveProduct(e) {
 
     const id = document.getElementById('product-id').value;
     const existingActiveStatus = document.getElementById('product-form').getAttribute('data-active');
+    const isAddon = document.getElementById('product-is-addon').checked;
 
     const productData = {
         name: document.getElementById('product-name').value,
         category: document.getElementById('product-category').value,
-        icon: document.getElementById('product-icon').value || 'fa-solid fa-utensils',
         price: parseFloat(document.getElementById('product-price').value),
         stock: parseInt(document.getElementById('product-stock').value),
-        color: document.getElementById('product-color').value,
+        isAddon: isAddon,
         active: existingActiveStatus !== 'false' // Mantém inativo se estava inativo, senão true 
     };
 
@@ -860,10 +1068,9 @@ function editProduct(id) {
     document.getElementById('product-id').value = p.id;
     document.getElementById('product-name').value = p.name;
     document.getElementById('product-category').value = p.category;
-    document.getElementById('product-icon').value = p.icon;
     document.getElementById('product-price').value = p.price;
     document.getElementById('product-stock').value = p.stock;
-    document.getElementById('product-color').value = p.color;
+    document.getElementById('product-is-addon').checked = p.isAddon === true;
 
     // Armazena no form para quando salvar não sobrescrever com o padrão (true)
     document.getElementById('product-form').setAttribute('data-active', p.active !== false ? 'true' : 'false');
@@ -1080,6 +1287,14 @@ function savePixKey() {
     localStorage.setItem('lacasa_pix_key', key);
     localStorage.setItem('lacasa_merchant_name', name);
     localStorage.setItem('lacasa_merchant_city', city);
+
+    if (typeof FireDB !== 'undefined') {
+        FireDB.saveSettings({
+            pixKey: key,
+            pixMerchantName: name,
+            pixMerchantCity: city
+        }).catch(e => console.warn('Erro ao salvar config PIX no Firebase:', e));
+    }
 
     alert('Configurações Pix salvas com sucesso!');
     generatePixQR(key);
@@ -1401,6 +1616,59 @@ function loadAutoApprove() {
 }
 
 // ============================================================
+// --- NOTIFICAÇÕES PUSH (FCM) ---
+// ============================================================
+
+function saveFCMKey() {
+    const key = document.getElementById('fcm-server-key').value.trim();
+    localStorage.setItem('lacasa_fcm_server_key', key);
+    alert('✅ Server Key do Firebase salva com sucesso no seu navegador.');
+}
+
+function loadFCMKeyUI() {
+    const key = localStorage.getItem('lacasa_fcm_server_key');
+    if (key) {
+        document.getElementById('fcm-server-key').value = key;
+    }
+}
+
+async function sendPushNotification(token, title, body) {
+    if (!token) return;
+
+    const serverKey = localStorage.getItem('lacasa_fcm_server_key');
+    if (!serverKey) {
+        console.warn('FCM Server Key não configurada no painel Gerenciamento. Notificação ignorada.');
+        return;
+    }
+
+    try {
+        const response = await fetch('https://fcm.googleapis.com/fcm/send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `key=${serverKey}`
+            },
+            body: JSON.stringify({
+                to: token,
+                notification: {
+                    title: title,
+                    body: body,
+                    icon: '/cliente/icon-192.png' // Assumindo que você vai pôr um icone aqui
+                }
+            })
+        });
+
+        if (response.ok) {
+            console.log("Push enviado com sucesso para o cliente.");
+        } else {
+            console.error("Falha ao enviar Push:", await response.text());
+        }
+    } catch (error) {
+        console.error("Erro na requisição FCM:", error);
+    }
+}
+
+// ============================================================
 // --- PEDIDOS ONLINE (Painel PDV) ---
 // ============================================================
 
@@ -1481,7 +1749,14 @@ function renderOnlineOrders(orders) {
         return `
             <div class="order-card ${isPending ? 'order-pending' : ''}" style="background:${statusColors[status] || 'var(--bg-dark)'}; border:1px solid var(--border-color); border-radius:10px; padding:16px; ${isPending ? 'animation: pulse-border 1.5s infinite;' : ''}">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <strong style="font-size:1.1rem;">#${order.id.slice(-4).toUpperCase()}</strong>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <strong style="font-size:1.1rem;">#${order.id.slice(-4).toUpperCase()}</strong>
+                        ${order.contato ? `
+                            <a href="https://wa.me/55${order.contato.replace(/\D/g, '')}" target="_blank" title="Abrir WhatsApp" style="color:#25d366; font-size:1.2rem; text-decoration:none;">
+                                <i class="fa-brands fa-whatsapp"></i>
+                            </a>
+                        ` : ''}
+                    </div>
                     <span style="font-size:0.8rem; padding:4px 8px; border-radius:20px; background:var(--bg-panel);">${statusLabels[status] || status}</span>
                 </div>
                 <div style="font-size:0.85rem; color:var(--color-text-muted); margin-bottom:8px;">${createdAt}</div>
@@ -1490,6 +1765,20 @@ function renderOnlineOrders(orders) {
                 <div style="font-weight:bold; font-size:1.05rem; margin-bottom:8px;">Total: R$ ${(order.total || 0).toFixed(2).replace('.', ',')}</div>
                 ${order.contato ? `<div style="font-size:0.82rem; color:var(--color-text-muted);">📱 ${order.contato}</div>` : ''}
                 ${order.endereco ? `<div style="font-size:0.82rem; color:var(--color-text-muted);">📍 ${order.endereco}</div>` : ''}
+                ${order.senhaGerada ? `<div style="font-size:0.85rem; color:var(--warning-color); font-weight:bold; margin-top:4px;">🔑 Senha do Cliente: ${order.senhaGerada}</div>` : ''}
+                
+                <!-- Mensagem Direta -->
+                <div style="margin-top:12px; border-top:1px solid rgba(255,255,255,0.05); padding-top:12px;">
+                    <div style="display:flex; gap:5px;">
+                        <input type="text" id="msg-${order.id}" placeholder="Enviar mensagem rápida..." 
+                               style="flex:1; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); color:white; padding:6px 10px; border-radius:6px; font-size:0.85rem;">
+                        <button onclick="sendDirectMessage('${order.id}')" style="background:var(--color-primary); color:white; border:none; border-radius:6px; padding:0 10px; cursor:pointer;">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    ${order.lastMessage ? `<div style="font-size:0.75rem; color:var(--success-color); margin-top:4px;">Enviada: "${order.lastMessage}"</div>` : ''}
+                </div>
+
                 <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
                     ${isPending ? `
                         <button onclick="updateOrderStatus('${order.id}', 'aprovado')" style="padding:6px 12px; border:none; border-radius:6px; background:var(--success-color); color:white; cursor:pointer; font-weight:600; font-size:0.82rem;">
@@ -1520,11 +1809,82 @@ function renderOnlineOrders(orders) {
     }).join('');
 }
 
+function sendDirectMessage(orderId) {
+    const input = document.getElementById(`msg-${orderId}`);
+    const msg = input ? input.value.trim() : '';
+    if (!msg) return;
+
+    if (typeof FireDB !== 'undefined') {
+        FireDB.updateOrderStatus(orderId, null, msg).then(() => {
+            input.value = '';
+        }).catch(err => alert('Erro ao enviar mensagem: ' + err.message));
+    }
+}
+
 function updateOrderStatus(orderId, newStatus) {
     if (typeof FireDB !== 'undefined') {
         FireDB.updateOrderStatus(orderId, newStatus).catch(err => {
             alert('Erro ao atualizar pedido: ' + err.message);
         });
+
+        // Tenta enviar Push Notification e Imprimir (se aprovado)
+        if (newStatus === 'aprovado' || newStatus === 'preparando' || newStatus === 'pronto' || newStatus === 'recusado') {
+            db.collection('orders').doc(orderId).get().then(doc => {
+                if (doc.exists) {
+                    const orderData = doc.data();
+
+                    // --- 1. IMPRESSÃO AUTOMÁTICA E INSERÇÃO NO HISTÓRICO SE APROVADO ---
+                    if (newStatus === 'aprovado') {
+                        let orderToPrint = { ...orderData };
+                        if (!orderToPrint.senha) {
+                            orderToPrint.senha = currentOrderNumber;
+                            currentOrderNumber++;
+                        }
+
+                        console.log("🖨️ Imprimindo pedido online aprovado e inserindo no histórico de vendas...");
+
+                        // Incrementa fechamento de caixa
+                        shiftSales.count++;
+                        shiftSales.total += (orderToPrint.total || 0);
+
+                        // Insere no histórico do caixa atual
+                        salesHistory.unshift(orderToPrint);
+                        saveShiftData();       // Salva no localStorage (Fechamento)
+
+                        try {
+                            if (typeof updateClosureUI === 'function') updateClosureUI();
+                            if (typeof renderHistory === 'function') renderHistory();
+
+                            if (typeof printSequentialReceipts === 'function') {
+                                printSequentialReceipts(orderToPrint);
+                            }
+                        } catch (e) { console.warn("Erro ao atualizar histórico ou imprimir:", e); }
+                    }
+
+                    // --- 2. DISPARO DE PUSH ---
+                    if (orderData.fcmToken) {
+                        let title, body;
+                        if (newStatus === 'aprovado') {
+                            title = "✅ Pedido Aprovado";
+                            body = `Seu pedido ${orderId.slice(-4).toUpperCase()} foi aceito pela loja!`;
+                        } else if (newStatus === 'preparando') {
+                            title = "🔥 Pedido em Preparo";
+                            body = `Seu pedido ${orderId.slice(-4).toUpperCase()} está sendo preparado!`;
+                        } else if (newStatus === 'pronto') {
+                            title = "🎉 Pedido Pronto!";
+                            body = `Seu pedido ${orderId.slice(-4).toUpperCase()} está pronto para você!`;
+                        } else if (newStatus === 'recusado') {
+                            title = "❌ Pedido Recusado";
+                            body = `Seu pedido ${orderId.slice(-4).toUpperCase()} foi recusado pela loja.`;
+                        }
+
+                        if (title && body) {
+                            sendPushNotification(orderData.fcmToken, title, body);
+                        }
+                    }
+                }
+            }).catch(e => console.warn('Erro ao checar token para notificação:', e));
+        }
     }
 }
 
@@ -1734,4 +2094,42 @@ function showDiagnostic(results) {
         ${results.map(r => `<div style="padding:2px 0;">${r}</div>`).join('')}
     `;
     document.body.prepend(banner);
+}
+function checkAppUpdates() {
+    const btn = event?.currentTarget;
+    const label = document.getElementById('update-status-label');
+
+    if (btn) btn.disabled = true;
+    if (label) {
+        label.style.display = 'inline';
+        label.textContent = 'Verificando...';
+        label.style.color = 'var(--color-primary)';
+    }
+
+    try {
+        if (window.require) {
+            const { remote } = window.require('electron');
+            // Since we use global Menu in main.js, we can also trigger the main process 
+            // function via a simple trick or just let the main process handle the version logic.
+            // For simplicity and to be "blindado", we'll use IPC or a direct call if possible.
+            // Since we have nodeIntegration: true, we can reach the main checkUpdates via a custom bridge
+            // or just reload the app which triggers it anyway. 
+            // Better yet, let's just use the Menu we already created.
+
+            // If the user clicked the button, we tell them to check the System Menu 
+            // or we could use IPC. Let's assume we want the button to WORK.
+            const { ipcRenderer } = window.require('electron');
+            // We'll add an IPC listener in main.js to handle this.
+            if (ipcRenderer) {
+                ipcRenderer.send('check-for-updates-manual');
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao chamar atualização:', e);
+    }
+
+    setTimeout(() => {
+        if (btn) btn.disabled = false;
+        if (label) label.style.display = 'none';
+    }, 2000);
 }

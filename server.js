@@ -54,8 +54,12 @@ app.listen(PORT, () => {
     console.log('  ╚══════════════════════════════════════════╝');
     console.log('');
 
-    // Abre o PDV no navegador automaticamente
-    import('open').then(mod => mod.default(url + '/pdv/')).catch(() => {
-        console.log(`  Abra manualmente: ${url}/pdv/`);
-    });
+    // Abre o PDV no navegador automaticamente apenas se não estiver rodando no Electron
+    if (!process.env.IS_ELECTRON && !process.versions.electron) {
+        import('open').then(mod => mod.default(url + '/pdv/')).catch(() => {
+            console.log(`  Abra manualmente: ${url}/pdv/`);
+        });
+    } else {
+        console.log(`  Rodando no App Desktop: ${url}/pdv/`);
+    }
 });

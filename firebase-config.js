@@ -12,10 +12,26 @@ const firebaseConfig = {
     measurementId: "G-3KV7DSJME9"
 };
 
+var db;
+var messaging;
+
 // Inicializa o Firebase
 if (typeof firebase !== 'undefined') {
     firebase.initializeApp(firebaseConfig);
-    var db = firebase.firestore();
+    db = firebase.firestore();
+
+    // Tenta inicializar Messaging (só funciona se a importação do script estiver no HTML)
+    try {
+        if (firebase.messaging.isSupported()) {
+            messaging = firebase.messaging();
+            console.log('📬 Firebase Cloud Messaging suportado e inicializado.');
+        } else {
+            console.warn('⚠️ Push Notifications não suportados neste navegador/SO.');
+        }
+    } catch (e) {
+        console.warn('⚠️ Módulo de Messaging não carregado ou erro na inicialização:', e.message);
+    }
+
     console.log('🔥 Firebase inicializado com sucesso');
 
     // Habilita persistência offline
@@ -37,6 +53,27 @@ if (typeof firebase !== 'undefined') {
 // ============================================================
 
 var FireDB = {
+    // --- Notificações ---
+    async requestNotificationPermission() {
+        if (!messaging) return null;
+        try {
+            console.log('Solicitando permissão de notificação...');
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                console.log('Permissão concedida!');
+                // Requer a sua VAPID Key do Firebase Console, se não colocar ele auto-gera mas é melhor amarrar.
+                // Como não temos a VAPID, vamos tentar pegar sem passar config.
+                const token = await messaging.getToken();
+                return token;
+            } else {
+                console.warn('Permissão de notificação negada pelo usuário.');
+                return null;
+            }
+        } catch (error) {
+            console.error('Erro ao pedir permissão de notificação:', error);
+            return null;
+        }
+    },
     // --- Products ---
     async loadProducts() {
         try {
@@ -157,9 +194,15 @@ var FireDB = {
             });
     },
 
-    async updateOrderStatus(orderId, status) {
+    async updateOrderStatus(orderId, status, message = null) {
         try {
-            await db.collection('orders').doc(orderId).update({ status });
+            const up = {};
+            if (status) up.status = status;
+            if (message) {
+                up.lastMessage = message;
+                up.messageAt = firebase.firestore.FieldValue.serverTimestamp();
+            }
+            await db.collection('orders').doc(orderId).update(up);
         } catch (e) {
             console.error('❌ FireDB: Erro ao atualizar status do pedido:', e.message);
             throw e;
