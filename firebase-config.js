@@ -85,6 +85,57 @@ var FireDB = {
         }
     },
 
+    async loginWithGoogle() {
+        try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            const result = await auth.signInWithPopup(provider);
+            await this.syncSocialUser(result.user);
+            return result.user;
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao logar com Google:', e.message);
+            throw e;
+        }
+    },
+
+    async loginWithFacebook() {
+        try {
+            const provider = new firebase.auth.FacebookAuthProvider();
+            const result = await auth.signInWithPopup(provider);
+            await this.syncSocialUser(result.user);
+            return result.user;
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao logar com Facebook:', e.message);
+            throw e;
+        }
+    },
+
+    async loginWithApple() {
+        try {
+            const provider = new firebase.auth.OAuthProvider('apple.com');
+            const result = await auth.signInWithPopup(provider);
+            await this.syncSocialUser(result.user);
+            return result.user;
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao logar com Apple:', e.message);
+            throw e;
+        }
+    },
+
+    async syncSocialUser(user) {
+        // Verifica se já existe documento para este usuário
+        const doc = await db.collection('customers').doc(user.uid).get();
+        if (!doc.exists) {
+            await db.collection('customers').doc(user.uid).set({
+                nome: user.displayName || '',
+                email: user.email || '',
+                whatsapp: '',
+                enderecos: [],
+                authProvider: user.providerData[0].providerId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+    },
+
     async logoutCustomer() {
         try {
             await auth.signOut();

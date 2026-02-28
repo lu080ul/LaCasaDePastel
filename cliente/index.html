@@ -243,6 +243,23 @@
                     <input type="password" id="login-password" class="checkout-input" placeholder="Sua senha">
                 </div>
                 <button class="submit-order-btn" onclick="handleLogin()">ENTRAR</button>
+
+                <div class="social-login-divider">
+                    <span>ou acesse com</span>
+                </div>
+
+                <div class="social-login-grid">
+                    <button class="social-btn google" onclick="handleGoogleLogin()">
+                        <i class="fa-brands fa-google"></i> Google
+                    </button>
+                    <button class="social-btn facebook" onclick="handleFacebookLogin()">
+                        <i class="fa-brands fa-facebook"></i> Facebook
+                    </button>
+                    <button class="social-btn apple" onclick="handleAppleLogin()">
+                        <i class="fa-brands fa-apple"></i> Apple
+                    </button>
+                </div>
+
                 <p style="text-align: center; margin-top: 20px; font-size: 0.9rem; color: var(--color-text-muted);">
                     Não tem conta? <a href="#" onclick="toggleAuthForms('register')"
                         style="color: var(--color-primary); font-weight: 700;">Cadastre-se</a>
@@ -268,6 +285,23 @@
                     <input type="password" id="reg-password" class="checkout-input" placeholder="Mínimo 6 caracteres">
                 </div>
                 <button class="submit-order-btn" onclick="handleRegister()">CRIAR CONTA</button>
+
+                <div class="social-login-divider">
+                    <span>ou cadastre-se com</span>
+                </div>
+
+                <div class="social-login-grid">
+                    <button class="social-btn google" onclick="handleGoogleLogin()">
+                        <i class="fa-brands fa-google"></i> Google
+                    </button>
+                    <button class="social-btn facebook" onclick="handleFacebookLogin()">
+                        <i class="fa-brands fa-facebook"></i> Facebook
+                    </button>
+                    <button class="social-btn apple" onclick="handleAppleLogin()">
+                        <i class="fa-brands fa-apple"></i> Apple
+                    </button>
+                </div>
+
                 <p style="text-align: center; margin-top: 20px; font-size: 0.9rem; color: var(--color-text-muted);">
                     Já tem conta? <a href="#" onclick="toggleAuthForms('login')"
                         style="color: var(--color-primary); font-weight: 700;">Fazer Login</a>

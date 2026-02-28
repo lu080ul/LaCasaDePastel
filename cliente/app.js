@@ -1205,6 +1205,42 @@ async function handleLogout() {
     }
 }
 
+async function handleGoogleLogin() {
+    try {
+        await FireDB.loginWithGoogle();
+        closeAuthModal();
+        alert('Bem-vindo com Google!');
+    } catch (e) {
+        if (e.code !== 'auth/popup-closed-by-user') {
+            alert('Erro ao entrar com Google: ' + e.message);
+        }
+    }
+}
+
+async function handleFacebookLogin() {
+    try {
+        await FireDB.loginWithFacebook();
+        closeAuthModal();
+        alert('Bem-vindo com Facebook!');
+    } catch (e) {
+        if (e.code !== 'auth/popup-closed-by-user') {
+            alert('Erro ao entrar com Facebook: ' + e.message);
+        }
+    }
+}
+
+async function handleAppleLogin() {
+    try {
+        await FireDB.loginWithApple();
+        closeAuthModal();
+        alert('Bem-vindo com Apple!');
+    } catch (e) {
+        if (e.code !== 'auth/popup-closed-by-user') {
+            alert('Erro ao entrar com Apple: ' + e.message);
+        }
+    }
+}
+
 async function loadUserProfile(uid) {
     const data = await FireDB.getCustomerData(uid);
     if (data) {
