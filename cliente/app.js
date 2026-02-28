@@ -429,16 +429,6 @@ function renderCartItems() {
     if (totalEl) totalEl.textContent = `R$ ${totalValue.toFixed(2).replace('.', ',')}`;
 }
 
-function openCart() {
-    toggleBottomCart();
-}
-
-function closeCart() {
-    const container = document.getElementById('bottom-cart-container');
-    if (container) container.classList.remove('expanded');
-    document.body.style.overflow = '';
-}
-
 // ============================================================
 // --- CHECKOUT ---
 // ============================================================
@@ -974,6 +964,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check Notification Permission
     setTimeout(checkNotificationPermission, 2500);
 
+    // Monitora estado de autenticação
+    if (typeof FireDB !== 'undefined') {
+        FireDB.onAuthStateChanged(async (user) => {
+            if (user) {
+                console.log('👤 Usuário logado:', user.uid);
+                await loadUserProfile(user.uid);
+            } else {
+                console.log('👤 Usuário deslogado');
+                clearUserProfile();
+            }
+        });
+    }
+
     // Carrega notificações salvas
     loadNotifications();
     updateNotifBadge();
@@ -1102,8 +1105,139 @@ function saveProfileSetup() {
     localStorage.setItem('lacasa_client_profile', JSON.stringify(profile));
     currentAddresses = updatedAddresses;
 
-    alert('Perfil atualizado com sucesso!');
+    currentAddresses = updatedAddresses;
+
+    // Se estiver logado, salva também no Firestore
+    const user = auth.currentUser;
+    if (user) {
+        FireDB.updateCustomerData(user.uid, {
+            nome,
+            whatsapp,
+            enderecos: updatedAddresses
+        }).then(() => {
+            alert('Perfil atualizado e sincronizado com sua conta!');
+        }).catch(err => {
+            console.error('Erro ao sincronizar perfil:', err);
+            alert('Perfil salvo localmente, mas erro ao sincronizar com nuvem.');
+        });
+    } else {
+        alert('Perfil atualizado localmente!');
+    }
+
     switchView('menu'); // Volta pro cardápio após salvar
+}
+
+// ============================================================
+// --- AUTH HANDLERS ---
+// ============================================================
+
+function openAuthModal() {
+    document.getElementById('auth-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeAuthModal() {
+    document.getElementById('auth-modal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function toggleAuthForms(to) {
+    if (to === 'register') {
+        document.getElementById('login-form-container').style.display = 'none';
+        document.getElementById('register-form-container').style.display = 'block';
+    } else {
+        document.getElementById('login-form-container').style.display = 'block';
+        document.getElementById('register-form-container').style.display = 'none';
+    }
+}
+
+async function handleLogin() {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+
+    if (!email || !password) {
+        alert('Preencha todos os campos.');
+        return;
+    }
+
+    try {
+        await FireDB.loginCustomer(email, password);
+        closeAuthModal();
+        alert('Bem-vindo de volta!');
+    } catch (e) {
+        alert('Erro ao entrar: ' + e.message);
+    }
+}
+
+async function handleRegister() {
+    const nome = document.getElementById('reg-nome').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
+    const whatsapp = document.getElementById('reg-whatsapp').value.trim();
+    const password = document.getElementById('reg-password').value.trim();
+
+    if (!nome || !email || !whatsapp || !password) {
+        alert('Preencha todos os campos obrigatórios.');
+        return;
+    }
+
+    if (password.length < 6) {
+        alert('A senha deve ter pelo menos 6 caracteres.');
+        return;
+    }
+
+    try {
+        await FireDB.registerCustomer(email, password, { nome, whatsapp, enderecos: [] });
+        closeAuthModal();
+        alert('Conta criada com sucesso!');
+    } catch (e) {
+        alert('Erro ao cadastrar: ' + e.message);
+    }
+}
+
+async function handleLogout() {
+    if (confirm('Deseja realmente sair da sua conta?')) {
+        try {
+            await FireDB.logoutCustomer();
+            alert('Você saiu da conta.');
+        } catch (e) {
+            alert('Erro ao sair: ' + e.message);
+        }
+    }
+}
+
+async function loadUserProfile(uid) {
+    const data = await FireDB.getCustomerData(uid);
+    if (data) {
+        // Atualiza localProfile e UI
+        const profile = {
+            nome: data.nome || '',
+            whatsapp: data.whatsapp || '',
+            enderecos: data.enderecos || []
+        };
+        localStorage.setItem('lacasa_client_profile', JSON.stringify(profile));
+
+        // Se estiver na visualização de perfil, recarrega
+        if (document.getElementById('view-profile').classList.contains('active')) {
+            loadProfileToView();
+        }
+
+        document.getElementById('profile-unauthenticated').style.display = 'none';
+        document.getElementById('profile-authenticated').style.display = 'block';
+    }
+}
+
+function clearUserProfile() {
+    localStorage.removeItem('lacasa_client_profile');
+    document.getElementById('profile-unauthenticated').style.display = 'block';
+    document.getElementById('profile-authenticated').style.display = 'none';
+
+    // Limpa campos do formulário
+    const nomeEl = document.getElementById('profile-nome');
+    const whatsappEl = document.getElementById('profile-whatsapp');
+    if (nomeEl) nomeEl.value = '';
+    if (whatsappEl) whatsappEl.value = '';
+    currentAddresses = [];
+    renderProfileAddresses();
 }
 
 // Helper para pegar location e transformar em string aproximada, serve pro modal de Checkout E View de Perfil

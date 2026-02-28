@@ -13,12 +13,14 @@ const firebaseConfig = {
 };
 
 var db;
+var auth;
 var messaging;
 
 // Inicializa o Firebase
 if (typeof firebase !== 'undefined') {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    auth = firebase.auth();
 
     // Tenta inicializar Messaging (só funciona se a importação do script estiver no HTML)
     try {
@@ -53,6 +55,68 @@ if (typeof firebase !== 'undefined') {
 // ============================================================
 
 var FireDB = {
+    // --- Autenticação ---
+    async registerCustomer(email, password, userData) {
+        try {
+            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            const uid = userCredential.user.uid;
+
+            // Salva dados adicionais no Firestore
+            await db.collection('customers').doc(uid).set({
+                ...userData,
+                email: email,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            return userCredential.user;
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao registrar cliente:', e.message);
+            throw e;
+        }
+    },
+
+    async loginCustomer(email, password) {
+        try {
+            const userCredential = await auth.signInWithEmailAndPassword(email, password);
+            return userCredential.user;
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao fazer login:', e.message);
+            throw e;
+        }
+    },
+
+    async logoutCustomer() {
+        try {
+            await auth.signOut();
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao fazer logout:', e.message);
+            throw e;
+        }
+    },
+
+    async getCustomerData(uid) {
+        try {
+            const doc = await db.collection('customers').doc(uid).get();
+            return doc.exists ? doc.data() : null;
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao buscar dados do cliente:', e.message);
+            throw e;
+        }
+    },
+
+    async updateCustomerData(uid, userData) {
+        try {
+            await db.collection('customers').doc(uid).update(userData);
+        } catch (e) {
+            console.error('❌ FireDB: Erro ao atualizar dados do cliente:', e.message);
+            throw e;
+        }
+    },
+
+    onAuthStateChanged(callback) {
+        return auth.onAuthStateChanged(callback);
+    },
+
     // --- Notificações ---
     async requestNotificationPermission() {
         if (!messaging) return null;

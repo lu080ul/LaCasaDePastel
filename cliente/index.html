@@ -13,24 +13,13 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
     <link rel="stylesheet" href="style.css">
 
-    <!-- PWA -->
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon-192.png">
     <meta name="theme-color" content="#e50914">
-    <meta name="theme-color" content="#e50914">
-    <link rel="apple-touch-icon" href="../icons/LogoLaCasa.jpg">
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('../sw.js')
-                    .then(reg => console.log('SW registrado!', reg))
-                    .catch(err => console.log('Erro ao registrar SW', err));
-            });
-        }
-    </script>
 </head>
 
 <body>
@@ -116,48 +105,62 @@
 
         <!-- PROFILE VIEW -->
         <div id="view-profile" class="view">
-            <div class="profile-view-container">
-                <h2 class="profile-section-title">Minha Conta</h2>
-                <p class="profile-section-subtitle">Gerencie seus dados e endereços para pedidos rápidos.</p>
+            <!-- State: Unauthenticated -->
+            <div id="profile-unauthenticated" style="text-align: center; padding: 60px 20px;">
+                <i class="fa-solid fa-user-circle"
+                    style="font-size: 4rem; color: var(--color-text-muted); opacity: 0.2; margin-bottom: 20px;"></i>
+                <h2 style="margin-bottom: 10px;">Acesse seu Perfil</h2>
+                <p style="color: var(--color-text-muted); margin-bottom: 30px;">Faça login para gerenciar seus dados e
+                    histórico de pedidos.</p>
+                <button class="submit-order-btn" style="max-width: 250px; margin: 0 auto;"
+                    onclick="openAuthModal()">Entrar ou Cadastrar</button>
+            </div>
 
-                <div class="profile-card">
-                    <div class="form-group">
-                        <label>Como quer ser chamado?</label>
-                        <input type="text" id="profile-nome" class="checkout-input" placeholder="Seu nome completo">
-                    </div>
-                    <div class="form-group">
-                        <label>WhatsApp (DDD + Número)</label>
-                        <input type="tel" id="profile-whatsapp" class="checkout-input" placeholder="(11) 99999-9999">
-                    </div>
-                </div>
+            <!-- State: Authenticated -->
+            <div id="profile-authenticated" style="display:none;">
+                <div class="profile-view-container">
+                    <h2 class="profile-section-title">Minha Conta</h2>
+                    <p class="profile-section-subtitle">Gerencie seus dados e endereços para pedidos rápidos.</p>
 
-                <div class="profile-card">
-                    <div class="form-group"
-                        style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
-                        <label style="margin-bottom:0;">Meus Endereços</label>
-                        <button type="button" onclick="addNewAddressField()"
-                            style="background:none; border:none; color:var(--color-primary); font-weight:bold; cursor:pointer; font-size:0.85rem;">
-                            <i class="fa-solid fa-plus"></i> NOVO
+                    <div class="profile-card">
+                        <div class="form-group">
+                            <label>Como quer ser chamado?</label>
+                            <input type="text" id="profile-nome" class="checkout-input" placeholder="Seu nome completo">
+                        </div>
+                        <div class="form-group">
+                            <label>WhatsApp (DDD + Número)</label>
+                            <input type="tel" id="profile-whatsapp" class="checkout-input"
+                                placeholder="(11) 99999-9999">
+                        </div>
+                    </div>
+
+                    <div class="profile-card">
+                        <div class="form-group"
+                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                            <label style="margin-bottom:0;">Meus Endereços</label>
+                            <button type="button" onclick="addNewAddressField()"
+                                style="background:none; border:none; color:var(--color-primary); font-weight:bold; cursor:pointer; font-size:0.85rem;">
+                                <i class="fa-solid fa-plus"></i> NOVO
+                            </button>
+                        </div>
+                        <div id="profile-addresses-container">
+                            <!-- Rendered via JS -->
+                        </div>
+                        <button type="button" onclick="getLocationAndFill(false)"
+                            style="width:100%; margin-top:15px; padding:12px; background:rgba(229, 9, 20, 0.05); border:1px dashed var(--color-primary); color:var(--color-primary); border-radius:var(--radius-sm); cursor:pointer; font-size:0.85rem; font-weight:600;">
+                            <i class="fa-solid fa-location-crosshairs"></i> Usar Minha Localização Atual
                         </button>
                     </div>
 
-                    <div id="profile-addresses-container">
-                        <!-- Rendered via JS -->
-                    </div>
-
-                    <button type="button" onclick="getLocationAndFill(false)"
-                        style="width:100%; margin-top:15px; padding:12px; background:rgba(229, 9, 20, 0.05); border:1px dashed var(--color-primary); color:var(--color-primary); border-radius:var(--radius-sm); cursor:pointer; font-size:0.85rem; font-weight:600;">
-                        <i class="fa-solid fa-location-crosshairs"></i> Usar Minha Localização Atual
+                    <button class="btn-save-profile" onclick="saveProfileSetup()" style="margin-bottom: 20px;">
+                        <i class="fa-solid fa-check-circle"></i> SALVAR ALTERAÇÕES
                     </button>
-                    <div id="geo-status-profile"
-                        style="font-size:0.75rem; margin-top:8px; color:var(--color-primary); display:none; text-align:center; font-weight:600;">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Buscando localização...
-                    </div>
-                </div>
 
-                <button class="btn-save-profile" onclick="saveProfileSetup()">
-                    <i class="fa-solid fa-check-circle"></i> SALVAR ALTERAÇÕES
-                </button>
+                    <button class="new-order-btn" onclick="handleLogout()"
+                        style="width: 100%; color: var(--color-danger); border-color: rgba(229, 9, 20, 0.2); background: rgba(229, 9, 20, 0.05);">
+                        <i class="fa-solid fa-right-from-bracket"></i> SAIR DA CONTA
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -224,7 +227,54 @@
         </div>
     </div>
 
-    <!-- Removed Old Cart Drawer -->
+
+    <!-- Login/Register Modal -->
+    <div id="auth-modal" class="modal-overlay" style="display:none;">
+        <div class="checkout-content" style="padding-bottom: 30px;">
+            <button class="close-modal" onclick="closeAuthModal()"><i class="fa-solid fa-xmark"></i></button>
+            <div id="login-form-container">
+                <h2 style="margin-bottom: 25px;">Acesse sua Conta</h2>
+                <div class="checkout-section">
+                    <label class="section-label">E-mail</label>
+                    <input type="email" id="login-email" class="checkout-input" placeholder="seu@email.com">
+                </div>
+                <div class="checkout-section">
+                    <label class="section-label">Senha</label>
+                    <input type="password" id="login-password" class="checkout-input" placeholder="Sua senha">
+                </div>
+                <button class="submit-order-btn" onclick="handleLogin()">ENTRAR</button>
+                <p style="text-align: center; margin-top: 20px; font-size: 0.9rem; color: var(--color-text-muted);">
+                    Não tem conta? <a href="#" onclick="toggleAuthForms('register')"
+                        style="color: var(--color-primary); font-weight: 700;">Cadastre-se</a>
+                </p>
+            </div>
+
+            <div id="register-form-container" style="display:none;">
+                <h2 style="margin-bottom: 25px;">Criar Conta</h2>
+                <div class="checkout-section">
+                    <label class="section-label">Nome Completo</label>
+                    <input type="text" id="reg-nome" class="checkout-input" placeholder="Seu nome">
+                </div>
+                <div class="checkout-section">
+                    <label class="section-label">E-mail</label>
+                    <input type="email" id="reg-email" class="checkout-input" placeholder="seu@email.com">
+                </div>
+                <div class="checkout-section">
+                    <label class="section-label">WhatsApp</label>
+                    <input type="tel" id="reg-whatsapp" class="checkout-input" placeholder="(11) 99999-9999">
+                </div>
+                <div class="checkout-section">
+                    <label class="section-label">Senha</label>
+                    <input type="password" id="reg-password" class="checkout-input" placeholder="Mínimo 6 caracteres">
+                </div>
+                <button class="submit-order-btn" onclick="handleRegister()">CRIAR CONTA</button>
+                <p style="text-align: center; margin-top: 20px; font-size: 0.9rem; color: var(--color-text-muted);">
+                    Já tem conta? <a href="#" onclick="toggleAuthForms('login')"
+                        style="color: var(--color-primary); font-weight: 700;">Fazer Login</a>
+                </p>
+            </div>
+        </div>
+    </div>
 
     <!-- Pix Payment Modal (Refined Flow) -->
     <div id="pix-modal" class="modal-overlay" style="display:none;">
