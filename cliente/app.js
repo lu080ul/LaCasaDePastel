@@ -435,7 +435,12 @@ function renderCartItems() {
 
 function goToCheckout() {
     if (clientCart.length === 0) return;
-    closeCart();
+
+    const container = document.getElementById('bottom-cart-container');
+    if (container) {
+        container.classList.remove('expanded');
+        document.body.style.overflow = '';
+    }
 
     const subtotal = clientCart.reduce((sum, c) => sum + (c.price * c.qty), 0);
     document.getElementById('checkout-subtotal').textContent = `R$ ${subtotal.toFixed(2).replace('.', ',')}`;
