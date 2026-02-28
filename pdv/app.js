@@ -147,23 +147,37 @@ function switchTab(tabId) {
 
 // --- Persistência de Dados (Local Storage via JSON) ---
 async function initProducts() {
-    try {
-        // Tenta carregar do Firebase primeiro
-        const cloudProducts = await FireDB.loadProducts();
-        if (cloudProducts && cloudProducts.length > 0) {
-            products = cloudProducts;
-            localStorage.setItem('lacasa_products', JSON.stringify(products));
-            return;
-        }
-    } catch (e) {
-        console.warn('Firebase offline ou não configurado, usando local storage.');
-    }
-
+    // 1. Carrega do localStorage primeiro para carregamento instantâneo offline (Offline-First)
     const stored = localStorage.getItem('lacasa_products');
     if (stored) {
         products = JSON.parse(stored);
     } else {
         products = [];
+    }
+
+    // 2. Inicia listener em tempo real do Firebase no background
+    if (typeof FireDB !== 'undefined' && firebaseConfig.apiKey !== 'SUA_API_KEY_AQUI') {
+        try {
+            FireDB.onProductsChange((cloudProducts) => {
+                if (cloudProducts && cloudProducts.length > 0) {
+                    products = cloudProducts;
+                    localStorage.setItem('lacasa_products', JSON.stringify(products));
+
+                    // Atualiza a view se a aba respectiva estiver aberta
+                    if (document.getElementById('tab-caixa').classList.contains('active')) {
+                        const filterText = document.getElementById('search-product')?.value || '';
+                        renderProducts(filterText);
+                    }
+                    if (document.getElementById('tab-estoque').classList.contains('active')) {
+                        const searchInv = document.getElementById('search-inventory')?.value || '';
+                        renderInventory(searchInv);
+                    }
+                    updateCartUI(); // Atualiza carrinho caso nomes ou preços mudem
+                }
+            });
+        } catch (e) {
+            console.warn('⚠️ Firebase não configurado ou offline para listen de produtos: ', e);
+        }
     }
 }
 
@@ -211,15 +225,22 @@ async function loadData() {
     updateClosureUI();
 }
 
-async function saveProducts() {
+async function saveProducts(updatedProduct = null, deletedId = null) {
+    // Salva cache local para offline-first (instantâneo)
     localStorage.setItem('lacasa_products', JSON.stringify(products));
 
-    // Sincroniza com Firebase (silenciosamente no background)
-    try {
-        await FireDB.saveAllProducts(products);
-        console.log('Sincronizado com Firebase');
-    } catch (e) {
-        console.warn('Erro ao sincronizar com Firebase:', e);
+    // Envia iteração granular para Firebase se possível
+    if (typeof FireDB !== 'undefined' && firebaseConfig.apiKey !== 'SUA_API_KEY_AQUI') {
+        try {
+            if (deletedId) {
+                await FireDB.deleteProduct(deletedId);
+            } else if (updatedProduct) {
+                await FireDB.saveProduct(updatedProduct);
+            }
+            console.log('☁️ Alteração de produto enviada ao Firebase (cache/nuvem).');
+        } catch (e) {
+            console.warn('⚠️ Erro ao enviar produto ao Firebase (será sincronizado quando a conexão voltar):', e);
+        }
     }
 }
 
@@ -234,9 +255,9 @@ async function syncToCloud() {
 
     try {
         await FireDB.saveAllProducts(products);
-        alert('✅ Estoque sincronizado com a nuvem com sucesso!');
+        alert('✅ Estoque sincronizado completamente com a nuvem (Forçado)!');
     } catch (e) {
-        alert('❌ Erro ao sincronizar: ' + e.message);
+        alert('❌ Erro ao sincronizar forçadamente: ' + e.message);
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -617,7 +638,10 @@ function completeSaleFlow(change = 0, pixPayload = null, orderObs = null) {
     // Deduzir estoque
     cart.forEach(item => {
         const p = products.find(prod => prod.id === item.id);
-        if (p) p.stock -= item.qty;
+        if (p) {
+            p.stock -= item.qty;
+            saveProducts(p);
+        }
     });
 
     shiftSales.count += 1;
@@ -636,9 +660,9 @@ function completeSaleFlow(change = 0, pixPayload = null, orderObs = null) {
     salesHistory.unshift(finalizedOrderData);
 
     currentOrderNumber++;
-    saveProducts();
     saveShiftData();
 
+    // Continua UI e impressão
     isOrderFinalized = true;
 
     // Configurar UI para pós-venda
@@ -961,9 +985,11 @@ function bulkToggleStatus(activate) {
         onConfirm: () => {
             ids.forEach(id => {
                 const p = products.find(prod => String(prod.id) === String(id));
-                if (p) p.active = activate;
+                if (p) {
+                    p.active = activate;
+                    saveProducts(p);
+                }
             });
-            saveProducts();
             const text = document.getElementById('search-inventory')?.value || '';
             renderInventory(text);
             renderProducts();
@@ -982,12 +1008,8 @@ function bulkDelete() {
         btnText: 'Excluir Todos',
         onConfirm: () => {
             products = products.filter(p => !ids.includes(String(p.id)));
-            saveProducts();
 
-            // Remove do Firebase também
-            if (typeof FireDB !== 'undefined') {
-                ids.forEach(pid => FireDB.deleteProduct(pid).catch(() => { }));
-            }
+            ids.forEach(pid => saveProducts(null, pid));
 
             const text = document.getElementById('search-inventory')?.value || '';
             renderInventory(text);
@@ -1004,7 +1026,7 @@ function toggleProductStatus(id) {
     // Alterna o status
     p.active = p.active === false ? true : false;
 
-    saveProducts();
+    saveProducts(p);
 
     // Mantém o filtro de pesquisa atual
     const text = document.getElementById('search-inventory')?.value || '';
@@ -1047,14 +1069,15 @@ function saveProduct(e) {
         const index = products.findIndex(p => String(p.id) == String(id));
         if (index > -1) {
             products[index] = { ...products[index], ...productData };
+            saveProducts(products[index]);
         }
     } else {
         // Add
         productData.id = Date.now();
         products.push(productData);
+        saveProducts(productData);
     }
 
-    saveProducts();
     renderInventory();
     renderProducts();
     closeModal('modal-product');
@@ -1088,12 +1111,7 @@ function deleteProduct(id) {
         onConfirm: () => {
             const pid = String(id);
             products = products.filter(p => String(p.id) !== pid);
-            saveProducts();
-
-            // Remove do Firebase também
-            if (typeof FireDB !== 'undefined') {
-                FireDB.deleteProduct(pid).catch(e => console.warn('Erro ao excluir do Firebase:', e));
-            }
+            saveProducts(null, pid);
 
             const text = document.getElementById('search-inventory')?.value || '';
             renderInventory(text);
@@ -1152,7 +1170,10 @@ function executeCancelSale(senha) {
     // Devolver itens ao estoque
     sale.items.forEach(item => {
         const p = products.find(prod => prod.id === item.id);
-        if (p) p.stock += item.qty;
+        if (p) {
+            p.stock += item.qty;
+            saveProducts(p);
+        }
     });
 
     // Deduzir do caixa (turnos)
@@ -1163,7 +1184,6 @@ function executeCancelSale(senha) {
     salesHistory.splice(saleIndex, 1);
 
     // Salvar estado
-    saveProducts();
     saveShiftData();
 
     // Re-render

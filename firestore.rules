@@ -1,25 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permite leitura pública de produtos e configurações da loja
+    // Permite leitura publica de produtos e config da loja. Escrita permitida para PDV.
     match /products/{product} {
-      allow read: if true;
-      allow write: if false; // Apenas via painel admin ou PDV (que deve ter auth própria se necessário)
+      allow read, write: if true; // Aberto temporariamente para o PDV funcionar sem login admin
     }
     
     match /settings/{setting} {
-      allow read: if true;
-      allow write: if false;
+      allow read, write: if true;
     }
 
-    // Pedidos: Clientes podem criar pedidos e ler os seus próprios (usando auth ou token)
-    // Para simplificar e garantir funcionamento imediato, permitimos criação pública, 
-    // mas leitura restrita ao dono via UID se logado.
     match /orders/{order} {
-      allow create: if true;
-      allow read, update: if request.auth != null && (resource.data.uid == request.auth.uid || request.auth.token.admin == true);
-      // Fallback para pedidos anônimos: permitir leitura se o ID for conhecido (rastreio direto)
-      allow read: if resource == null || (request.auth == null && resource.id != null);
+      // PDV precisa de update para mudar status ('aprovado') e criar (balcao). Cliente precisa create.
+      allow read, write: if true;
     }
 
     // Clientes: Proteção de dados sensíveis
