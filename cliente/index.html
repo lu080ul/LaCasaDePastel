@@ -184,8 +184,8 @@
     <!-- Bottom Cart Bar (Expandable) -->
     <div id="bottom-cart-container" class="bottom-cart-container">
         <!-- Floating Bar (Collapsed State) -->
-        <div class="cart-bar-collapsed" onclick="toggleBottomCart()">
-            <div class="cart-bar-info">
+        <div class="cart-bar-collapsed">
+            <div class="cart-bar-info" onclick="toggleBottomCart()">
                 <div class="cart-bar-icon">
                     <i class="fa-solid fa-bag-shopping"></i>
                     <span id="cart-badge-bottom" class="cart-badge">0</span>
@@ -195,7 +195,12 @@
                     <span id="cart-bar-total">R$ 0,00</span>
                 </div>
             </div>
-            <i class="fa-solid fa-chevron-up expand-icon"></i>
+            <div class="cart-bar-actions">
+                <button class="cart-checkout-inline-btn" onclick="goToCheckout()">
+                    Finalizar <i class="fa-solid fa-arrow-right"></i>
+                </button>
+                <i class="fa-solid fa-chevron-up expand-icon" onclick="toggleBottomCart()"></i>
+            </div>
         </div>
 
         <!-- Full Cart Content (Expanded State) -->
@@ -226,6 +231,7 @@
             </div>
         </div>
     </div>
+
 
 
     <!-- Login/Register Modal -->
