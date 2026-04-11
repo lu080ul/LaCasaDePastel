@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { loadFromStorage, saveToStorage } from '../utils/LocalStorage';
 import { useAppContext } from '../store/Store';
 import { Search, Plus, Minus, Trash2, CheckCircle2, DollarSign, CreditCard, Menu, ShoppingCart, MessageSquare, Edit } from 'lucide-react';
 import { generatePixBrCode, printSequentialReceipts } from '../utils/ReceiptHelper';
@@ -7,11 +8,17 @@ const PosArea = () => {
   const { products, setProducts, salesHistory, setSalesHistory, currentOrderNumber, setCurrentOrderNumber, shiftSales, setShiftSales } = useAppContext();
   
   const [search, setSearch] = useState('');
-  const [cart, setCart] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
-  const [payAmount, setPayAmount] = useState('');
-  const [orderObservation, setOrderObservation] = useState('');
+  const [cart, setCart] = useState(() => loadFromStorage('lacasa_current_cart', []));
+  const [paymentMethod, setPaymentMethod] = useState(() => loadFromStorage('lacasa_current_payment', 'Dinheiro'));
+  const [payAmount, setPayAmount] = useState(() => loadFromStorage('lacasa_current_payamt', ''));
+  const [orderObservation, setOrderObservation] = useState(() => loadFromStorage('lacasa_current_obs', ''));
   const [editingItem, setEditingItem] = useState(null); // { cartItemId, observation, addons }
+
+  // Persistir estado do carrinho e formulário no localStorage
+  useEffect(() => { saveToStorage('lacasa_current_cart', cart); }, [cart]);
+  useEffect(() => { saveToStorage('lacasa_current_payment', paymentMethod); }, [paymentMethod]);
+  useEffect(() => { saveToStorage('lacasa_current_payamt', payAmount); }, [payAmount]);
+  useEffect(() => { saveToStorage('lacasa_current_obs', orderObservation); }, [orderObservation]);
 
   // Lógica de adicionar ao carrinho
   const addToCart = (product) => {
@@ -64,7 +71,7 @@ const PosArea = () => {
   const cartTotal = cart.reduce((acc, item) => acc + (getItemUnitPrice(item) * item.qty), 0);
   const change = paymentMethod === 'Dinheiro' ? (parseFloat(payAmount || 0) - cartTotal) : 0;
 
-  const finalizeSale = () => {
+  const finalizeSale = async () => {
     if (cart.length === 0) {
       alert("O carrinho está vazio!");
       return;
@@ -127,7 +134,7 @@ const PosArea = () => {
     setOrderObservation('');
     
     // Imprime sequencialmente Comanda e Cupom
-    printSequentialReceipts(newOrder);
+    await printSequentialReceipts(newOrder);
   };
 
     const filteredProducts = React.useMemo(() => {

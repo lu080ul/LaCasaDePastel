@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../store/Store';
-import { ChefHat, Check, Trash2, ArrowRight, CheckCircle2, BellRing } from 'lucide-react';
+import { ChefHat, Check, Trash2, ArrowRight, CheckCircle2, BellRing, PackageCheck, Edit } from 'lucide-react';
+import OrderEditModal from './OrderEditModal';
 
 const KitchenArea = () => {
   const { salesHistory, setSalesHistory } = useAppContext();
-  const [calling, setCalling] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
 
   const changeStatus = (id, newStatus) => {
     setSalesHistory(salesHistory.map(sale => 
@@ -12,17 +14,24 @@ const KitchenArea = () => {
     ));
   };
 
-  const callAllPending = () => {
-    const pendingCount = (salesHistory || []).filter(s => s.status === 'preparando').length;
-    if (pendingCount === 0) return;
-    setCalling(true);
+  const callAgain = (id) => {
     setSalesHistory((salesHistory || []).map(sale =>
-      sale.status === 'preparando' ? { ...sale, status: 'pronto' } : sale
+      sale.senha === id ? { ...sale, callAgainAt: Date.now() } : sale
     ));
-    setTimeout(() => setCalling(false), 1200);
   };
 
-  const pendingCount = (salesHistory || []).filter(s => s.status === 'preparando').length;
+  // Despachar TODOS os pedidos que estão "pronto"
+  const dispatchAllReady = () => {
+    const readyCount = (salesHistory || []).filter(s => s.status === 'pronto').length;
+    if (readyCount === 0) return;
+    setDispatching(true);
+    setSalesHistory((salesHistory || []).map(sale =>
+      sale.status === 'pronto' ? { ...sale, status: 'entregue' } : sale
+    ));
+    setTimeout(() => setDispatching(false), 1200);
+  };
+
+  const readyCount = (salesHistory || []).filter(s => s.status === 'pronto').length;
 
   const activeOrders = (salesHistory || [])
     .filter(s => s.status === 'preparando' || s.status === 'pronto')
@@ -43,22 +52,23 @@ const KitchenArea = () => {
           </div>
         </div>
         
+        {/* Botão Despachar Todos os Prontos */}
         <button 
-          onClick={callAllPending}
-          disabled={pendingCount === 0}
+          onClick={dispatchAllReady}
+          disabled={readyCount === 0}
           className={`magnetic-btn relative px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-all border 
-            ${pendingCount === 0 
+            ${readyCount === 0 
               ? 'bg-white/5 text-gray-600 border-white/5 cursor-not-allowed' 
-              : calling
+              : dispatching
                 ? 'bg-lacasa-success text-white border-emerald-400/50 scale-95'
-                : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white border-amber-500/30'
+                : 'bg-lacasa-success/20 text-lacasa-success hover:bg-lacasa-success hover:text-white border-lacasa-success/30'
             }`}
         >
-          <BellRing className={`w-5 h-5 ${calling ? 'animate-bounce' : ''}`} />
-          {calling ? 'Chamando...' : 'Chamar Pedidos'}
-          {pendingCount > 0 && !calling && (
-            <span className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shadow-amber-500/50">
-              {pendingCount}
+          <PackageCheck className={`w-5 h-5 ${dispatching ? 'animate-bounce' : ''}`} />
+          {dispatching ? 'Despachando...' : 'Despachar Todos'}
+          {readyCount > 0 && !dispatching && (
+            <span className="absolute -top-2 -right-2 w-6 h-6 bg-lacasa-success text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/50">
+              {readyCount}
             </span>
           )}
         </button>
@@ -83,7 +93,14 @@ const KitchenArea = () => {
               <tbody>
                 {activeOrders.map(order => (
                   <tr key={order.senha} className={`border-t border-white/5 transition-colors ${order.status === 'pronto' ? 'bg-lacasa-success/5 hover:bg-lacasa-success/10' : 'hover:bg-white/5'}`}>
-                    <td className="px-6 py-4 font-mono font-black text-2xl">#{String(order.senha).padStart(3, '0')}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-2xl">#{String(order.senha).padStart(3, '0')}</span>
+                        <button onClick={() => setEditingOrder(order)} title="Editar pedido" className="p-1.5 text-gray-500 hover:text-lacasa-primary hover:bg-white/5 rounded-lg transition-colors">
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
                         {(order.items || []).map((item, index) => (
@@ -118,8 +135,8 @@ const KitchenArea = () => {
                            <CheckCircle2 className="w-5 h-5"/> Pronto
                          </button>
                        ) : (
-                         <button onClick={() => changeStatus(order.senha, 'entregue')} className="bg-lacasa-bg border border-white/10 hover:bg-white/10 text-gray-300 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition-all ml-auto">
-                           <ArrowRight className="w-5 h-5"/> Despachar
+                         <button onClick={() => callAgain(order.senha)} title="Chamar novamente na TV" className="bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white border border-amber-500/30 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition-all ml-auto">
+                           <BellRing className="w-4 h-4"/> Chamar
                          </button>
                        )}
                     </td>
@@ -130,6 +147,10 @@ const KitchenArea = () => {
          )}
       </div>
 
+      {/* Modal de edição de pedido */}
+      {editingOrder && (
+        <OrderEditModal order={editingOrder} onClose={() => setEditingOrder(null)} />
+      )}
     </div>
   );
 };

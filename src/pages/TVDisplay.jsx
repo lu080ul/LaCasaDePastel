@@ -58,6 +58,23 @@ const TVDisplay = () => {
     }
   }, [pronto]);
 
+  // Detecta "Chamar Novamente" — campo callAgainAt foi atualizado
+  const lastCallAgain = useRef({});
+  useEffect(() => {
+    pronto.forEach(order => {
+      const prev = lastCallAgain.current[order.senha];
+      const curr = order.callAgainAt;
+      if (curr && curr !== prev) {
+        lastCallAgain.current[order.senha] = curr;
+        // Só adiciona à fila se não estiver já aguardando
+        setFlashQueue(q => {
+          if (q.includes(order.senha)) return q;
+          return [...q, order.senha];
+        });
+      }
+    });
+  }, [pronto]);
+
   useEffect(() => {
     if (flashQueue.length > 0 && !activeFlash) {
       const nextSenha = flashQueue[0];
@@ -75,14 +92,14 @@ const TVDisplay = () => {
     const isReady = variant === 'pronto';
     return (
       <div style={{
-        borderRadius: '1.5rem',
-        padding: '1.5rem 1rem',
+        borderRadius: '1rem',
+        padding: '1rem',
         textAlign: 'center',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '0.5rem',
+        gap: '0.25rem',
         background: isReady ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.04)',
         border: isReady ? '2px solid rgba(16,185,129,0.6)' : '1px solid rgba(255,255,255,0.08)',
         boxShadow: isReady ? '0 0 30px rgba(16,185,129,0.15)' : 'none',
@@ -90,7 +107,7 @@ const TVDisplay = () => {
       }}>
         {/* Número grande */}
         <span style={{
-          fontSize: 'clamp(3.5rem, 7vw, 6rem)',
+          fontSize: 'clamp(2.5rem, 6vw, 4.5rem)',
           fontWeight: 900,
           fontFamily: 'monospace',
           letterSpacing: '-0.04em',
@@ -158,13 +175,13 @@ const TVDisplay = () => {
         )}
       </div>
 
-      {/* Grade de 2 colunas */}
+      {/* Grade Dinâmica Auto-Fill para comportar muitos itens */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '1rem',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(110px, 15vw, 160px), 1fr))',
+        gap: '0.75rem',
         alignContent: 'start',
       }}>
         {orders.length > 0
@@ -193,7 +210,7 @@ const TVDisplay = () => {
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: '#000',
+      backgroundColor: localStorage.getItem('lacasa_tv_bg') || '#000000',
       fontFamily: "'Inter', 'Segoe UI', sans-serif",
       overflow: 'hidden',
       padding: '1.5rem 2rem 2rem',

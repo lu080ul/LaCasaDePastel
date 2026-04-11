@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { AppProvider } from './store/Store';
 import PDV from './pages/PDV';
 import TVDisplay from './pages/TVDisplay';
+import DespachoDisplay from './pages/DespachoDisplay';
 
 function App() {
   return (
@@ -13,6 +14,9 @@ function App() {
         
         {/* TV Display Route - Cinematic TV Screen */}
         <Route path="/tv" element={<TVDisplay />} />
+
+        {/* Despacho Display Route - Delivery Panel for second monitor */}
+        <Route path="/despacho" element={<DespachoDisplay />} />
       </Routes>
     </AppProvider>
   );

@@ -13,7 +13,9 @@
 }
 
 html {
-  font-size: 13px; /* Escala toda a UI (Tailwind rem units) em ~81% (13/16px) */
+  /* Font-size controlado dinamicamente via JS (localStorage lacasa_font_size).
+     Valores: 10-16px. Default: 13px */
+  font-size: var(--lacasa-font-size, 13px);
 }
 
 body {

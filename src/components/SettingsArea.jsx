@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store/Store';
-import { Settings, Image as ImageIcon, Type, Receipt, QrCode, Lock, History, Printer, XCircle, MonitorPlay, Download } from 'lucide-react';
+import { Settings, Image as ImageIcon, Type, Receipt, QrCode, Lock, History, Printer, XCircle, MonitorPlay, Download, RefreshCw, PackageCheck, Edit } from 'lucide-react';
 import { printSpecificReceipt, printClosureReport } from '../utils/ReceiptHelper';
+import OrderEditModal from './OrderEditModal';
 
 const SettingsArea = () => {
   const { 
@@ -15,15 +16,52 @@ const SettingsArea = () => {
 
   const [receiptName, setReceiptName] = useState(() => localStorage.getItem('lacasa_receipt_name') || 'LA CASA DE PASTEL');
   const [receiptFooter, setReceiptFooter] = useState(() => localStorage.getItem('lacasa_receipt_footer_msg') || 'Obrigado pela preferência e volte sempre!');
+  const [receiptLogo, setReceiptLogo] = useState(() => localStorage.getItem('lacasa_receipt_logo') || '');
+
+  // UI Settings
+  const [uiScale, setUiScale] = useState(() => parseInt(localStorage.getItem('lacasa_font_size') || '13'));
+  const [tvBgColor, setTvBgColor] = useState(() => localStorage.getItem('lacasa_tv_bg') || '#000000');
   
   // Salvar opções de cupom
   useEffect(() => {
     localStorage.setItem('lacasa_receipt_name', receiptName);
     localStorage.setItem('lacasa_receipt_footer_msg', receiptFooter);
-  }, [receiptName, receiptFooter]);
+    if (receiptLogo) {
+      localStorage.setItem('lacasa_receipt_logo', receiptLogo);
+    } else {
+      localStorage.removeItem('lacasa_receipt_logo');
+    }
+  }, [receiptName, receiptFooter, receiptLogo]);
+
+  // Aplicação da Escala UI
+  useEffect(() => {
+    localStorage.setItem('lacasa_font_size', uiScale.toString());
+    document.documentElement.style.setProperty('--lacasa-font-size', `${uiScale}px`);
+  }, [uiScale]);
+
+  // Salvar a cor da TV
+  useEffect(() => {
+    localStorage.setItem('lacasa_tv_bg', tvBgColor);
+  }, [tvBgColor]);
+
+  // Lidar com Upload de Imagem (Logo)
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReceiptLogo(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const [checkingUpdate, setCheckingUpdate] = useState('idle'); // idle | checking | done
+  const [editingOrder, setEditingOrder] = useState(null);
 
   const [availableDisplays, setAvailableDisplays] = useState([]);
-  const [selectedDisplay, setSelectedDisplay] = useState(null);
+  const [selectedTvDisplay, setSelectedTvDisplay] = useState(null);
+  const [selectedDespachoDisplay, setSelectedDespachoDisplay] = useState(null);
 
   useEffect(() => {
     if (window.require) {
@@ -32,7 +70,9 @@ const SettingsArea = () => {
           setAvailableDisplays(disp || []);
           if (disp && disp.length > 0) {
              const external = disp.find(d => !d.isPrimary);
-             setSelectedDisplay(external ? external.id : disp[0].id);
+             const defaultId = external ? external.id : disp[0].id;
+             setSelectedTvDisplay(defaultId);
+             setSelectedDespachoDisplay(defaultId);
           }
        }).catch(console.error);
     }
@@ -157,47 +197,176 @@ const SettingsArea = () => {
                 </div>
 
                 <div>
+                  <label className="text-sm font-bold text-gray-400 block mb-1">Logo do Cupom (Base64/IMG):</label>
+                  <p className="text-xs text-gray-500 mb-2">Envie uma imagem preta/branca sem fundo ou com fundo branco para impressão termal.</p>
+                  <div className="flex items-center gap-3">
+                    <label className="cursor-pointer bg-white/5 border border-white/10 hover:bg-white/10 px-4 py-2 rounded-xl text-sm font-bold transition-colors">
+                      Escolher Imagem...
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                    </label>
+                    {receiptLogo && (
+                       <button onClick={() => setReceiptLogo('')} className="text-xs text-red-400 hover:text-red-300">
+                         Remover Logo Customizada
+                       </button>
+                    )}
+                  </div>
+                  {receiptLogo && (
+                    <div className="mt-3 bg-white p-2 w-max rounded overflow-hidden max-h-24 max-w-full">
+                       <img src={receiptLogo} alt="Logo Prev" className="h-20 object-contain" />
+                    </div>
+                  )}
+                </div>
+
+                <div>
                   <label className="text-sm font-bold text-gray-400 block mb-1">Mensagem de Rodapé:</label>
                   <textarea rows="3" value={receiptFooter} onChange={e => setReceiptFooter(e.target.value)} className="w-full bg-lacasa-bg border border-white/10 rounded-xl px-4 py-2 outline-none text-white focus:border-lacasa-primary transition-colors resize-none"></textarea>
                 </div>
               </div>
             </div>
 
-            {/* TV Settings */}
+            {/* Aparencia UI / TV */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-xl">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-3 border-b border-white/10 pb-3">
+                <ImageIcon className="text-pink-400 w-5 h-5" /> 
+                Aparência Visual
+              </h3>
+              
+              <div className="space-y-5">
+                <div>
+                  <label className="text-sm font-bold text-gray-400 block mb-1">Tamanho da Fonte (Zoom UI):</label>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="range" 
+                      min="10" 
+                      max="18" 
+                      value={uiScale} 
+                      onChange={e => setUiScale(parseInt(e.target.value))} 
+                      className="flex-1 accent-pink-500" 
+                    />
+                    <span className="font-mono bg-lacasa-bg px-2 py-1 rounded border border-white/10 text-pink-400 font-bold w-12 text-center text-sm">{uiScale}px</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Isso aumenta/diminui tudo simultaneamente.</p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-bold text-gray-400 block mb-1">Cor de Fundo da TV:</label>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="color" 
+                      value={tvBgColor} 
+                      onChange={e => setTvBgColor(e.target.value)}
+                      className="w-10 h-10 rounded cursor-pointer border-none p-0 bg-transparent"
+                    />
+                    <span className="font-mono text-sm text-gray-400">{tvBgColor}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Monitores Externos — TV e Despacho */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-xl">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-3 border-b border-white/10 pb-3">
                 <MonitorPlay className="text-purple-400 w-5 h-5" /> 
-                Painel de Pedidos (TV)
+                Monitores Externos
               </h3>
+              <p className="text-sm text-gray-400 font-medium mb-5">Selecione em qual tela cada painel será exibido. Você pode usar o mesmo monitor ou monitores diferentes.</p>
               
-              <div className="space-y-4">
-                <p className="text-sm text-gray-400 font-medium">O sistema lista as telas conectadas para você forçar a abertura da TV em uma tela específica.</p>
-                {availableDisplays.length > 0 && (
-                   <div className="flex flex-col gap-1">
-                     <label className="text-xs text-gray-500 font-bold uppercase">Selecione o Monitor:</label>
-                     <select 
-                       className="bg-lacasa-bg border border-white/10 text-white text-sm outline-none rounded-xl p-2 focus:border-purple-500"
-                       value={selectedDisplay || ''}
-                       onChange={e => setSelectedDisplay(parseInt(e.target.value))}
-                     >
-                        {availableDisplays.map(d => (
-                          <option key={d.id} value={d.id}>{d.label}</option>
-                        ))}
-                     </select>
-                   </div>
-                )}
-                <button 
+              <div className="flex flex-col gap-5">
+                {/* TV Panel */}
+                <div className="bg-lacasa-bg/80 border border-purple-500/15 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <MonitorPlay className="w-4 h-4 text-purple-400" />
+                    <span className="font-bold text-purple-400 text-sm uppercase tracking-wider">Painel de Pedidos (TV)</span>
+                  </div>
+                  <p className="text-xs text-gray-500">Tela voltada para o cliente — exibe senhas preparando e prontos com alerta sonoro.</p>
+                  {availableDisplays.length > 0 && (
+                    <select 
+                      className="w-full bg-lacasa-bg border border-white/10 text-white text-sm outline-none rounded-xl p-2 focus:border-purple-500"
+                      value={selectedTvDisplay || ''}
+                      onChange={e => setSelectedTvDisplay(parseInt(e.target.value))}
+                    >
+                      {availableDisplays.map(d => (
+                        <option key={d.id} value={d.id}>{d.label}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button 
+                    onClick={() => {
+                      if (window.require) {
+                         const { ipcRenderer } = window.require('electron');
+                         ipcRenderer.send('open-tv-display', selectedTvDisplay);
+                      } else {
+                         window.open('#/tv', '_blank', 'width=1280,height=720,fullscreen=yes');
+                      }
+                    }} 
+                    className="magnetic-btn w-full bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white border border-purple-500/30 px-5 py-2.5 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <MonitorPlay className="w-4 h-4" /> Abrir TV
+                  </button>
+                </div>
+
+                {/* Despacho Panel */}
+                <div className="bg-lacasa-bg/80 border border-emerald-500/15 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <PackageCheck className="w-4 h-4 text-emerald-400" />
+                    <span className="font-bold text-emerald-400 text-sm uppercase tracking-wider">Painel de Despacho</span>
+                  </div>
+                  <p className="text-xs text-gray-500">Tela para o entregador — controla a fila de pedidos prontos e despacho.</p>
+                  {availableDisplays.length > 0 && (
+                    <select 
+                      className="w-full bg-lacasa-bg border border-white/10 text-white text-sm outline-none rounded-xl p-2 focus:border-emerald-500"
+                      value={selectedDespachoDisplay || ''}
+                      onChange={e => setSelectedDespachoDisplay(parseInt(e.target.value))}
+                    >
+                      {availableDisplays.map(d => (
+                        <option key={d.id} value={d.id}>{d.label}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button 
+                    onClick={() => {
+                      if (window.require) {
+                         const { ipcRenderer } = window.require('electron');
+                         ipcRenderer.send('open-despacho-display', selectedDespachoDisplay);
+                      } else {
+                         window.open('#/despacho', '_blank', 'width=1280,height=720');
+                      }
+                    }} 
+                    className="magnetic-btn w-full bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white border border-emerald-500/30 px-5 py-2.5 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <PackageCheck className="w-4 h-4" /> Abrir Despacho
+                  </button>
+                </div>
+              </div>
+            </div>
+            {/* Sistema / Atualização */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-xl">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-3 border-b border-white/10 pb-3">
+                <RefreshCw className="text-blue-400 w-5 h-5" />
+                Sistema & Atualizações
+              </h3>
+              <div className="space-y-3">
+                <p className="text-sm text-gray-400">O app verifica atualizações automaticamente. Use o botão abaixo para verificar agora.</p>
+                <button
                   onClick={() => {
-                    if (window.require) {
-                       const { ipcRenderer } = window.require('electron');
-                       ipcRenderer.send('open-tv-display', selectedDisplay);
-                    } else {
-                       window.open('#/tv', '_blank', 'width=1280,height=720,fullscreen=yes');
+                    if (!window.require) {
+                      alert('Verificação de updates disponível apenas no app instalado.');
+                      return;
                     }
-                  }} 
-                  className="magnetic-btn w-full bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white border border-purple-500/30 px-6 py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                    const { ipcRenderer } = window.require('electron');
+                    setCheckingUpdate('checking');
+                    ipcRenderer.send('check-for-updates');
+                    setTimeout(() => setCheckingUpdate('idle'), 8000);
+                  }}
+                  disabled={checkingUpdate === 'checking'}
+                  className={`magnetic-btn w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold border transition-all
+                    ${checkingUpdate === 'checking'
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 cursor-wait'
+                      : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white border-blue-500/30'
+                    }`}
                 >
-                  <MonitorPlay className="w-5 h-5" /> Forçar Abertura da TV
+                  <RefreshCw className={`w-4 h-4 ${checkingUpdate === 'checking' ? 'animate-spin' : ''}`} />
+                  {checkingUpdate === 'checking' ? 'Verificando...' : 'Buscar Atualizações'}
                 </button>
               </div>
             </div>
@@ -255,6 +424,9 @@ const SettingsArea = () => {
                         </td>
                         <td className="px-4 py-2 sm:py-3 text-right">
                            <div className="flex flex-wrap justify-end gap-2">
+                             <button onClick={() => setEditingOrder(sale)} title="Editar Pedido" className="bg-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-colors">
+                               <Edit className="w-3 h-3"/> Editar
+                             </button>
                              <button onClick={() => printSpecificReceipt('comanda', sale)} title="Reimprimir Comanda" className="bg-amber-500/20 text-amber-500 hover:bg-amber-500 hover:text-white px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-colors">
                                <Printer className="w-3 h-3"/> Comanda
                              </button>
@@ -281,6 +453,11 @@ const SettingsArea = () => {
          </div>
 
       </div>
+
+      {/* Modal de edição de pedido */}
+      {editingOrder && (
+        <OrderEditModal order={editingOrder} onClose={() => setEditingOrder(null)} />
+      )}
     </div>
   );
 };

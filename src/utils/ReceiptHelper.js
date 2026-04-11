@@ -1,4 +1,5 @@
 import logoIcon from '../assets/logo.png';
+import QRCode from 'qrcode';
 
 // Pix Payload Generation Logic (BR Code)
 function crc16(str) {
@@ -46,8 +47,22 @@ export function generatePixBrCode(pixKey, amount, name, city, txid, desc = '') {
   return payload;
 }
 
-export function pixPayloadToQrUrl(payload, size = 200) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&ecc=M&data=${encodeURIComponent(payload)}`;
+/**
+ * Gera um Data URL (base64) do QR Code localmente — funciona 100% offline.
+ * Substituiu a versão antiga que dependia de api.qrserver.com.
+ */
+export async function pixPayloadToDataUrl(payload, size = 200) {
+  try {
+    return await QRCode.toDataURL(payload, {
+      width: size,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' }
+    });
+  } catch (err) {
+    console.error('Erro ao gerar QR Code PIX:', err);
+    return null;
+  }
 }
 
 // Print Logic
@@ -110,9 +125,9 @@ function processPrintQueue() {
   });
 }
 
-export function printSequentialReceipts(orderData) {
+export async function printSequentialReceipts(orderData) {
   const comandaHTML = generateComandaHTML(orderData, false);
-  const cupomHTML = generateCupomHTML(orderData, false);
+  const cupomHTML = await generateCupomHTML(orderData, false);
 
   // Coloca o Cupom na fila para imprimir em seguida
   printQueue.push(cupomHTML);
@@ -123,12 +138,12 @@ export function printSequentialReceipts(orderData) {
   setTimeout(() => window.print(), 100); // Allow DOM to update
 }
 
-export function printSpecificReceipt(type, orderData) {
+export async function printSpecificReceipt(type, orderData) {
   let html = '';
   if (type === 'comanda') {
       html = generateComandaHTML(orderData, true);
   } else {
-      html = generateCupomHTML(orderData, true);
+      html = await generateCupomHTML(orderData, true);
   }
   const area = getPrintArea();
   area.innerHTML = html;
@@ -145,11 +160,13 @@ export function printClosureReport(salesHistory, shiftSales) {
 function generateComandaHTML(orderData, isReprint = false) {
   const dateStr = new Date().toLocaleString('pt-BR');
   const senhaFmt = String(orderData.senha).padStart(3, '0');
+  const customLogo = localStorage.getItem('lacasa_receipt_logo');
+  const logoSrc = customLogo ? customLogo : logoIcon;
   
   return `
       <div class="receipt">
           <div class="receipt-header">
-              <h2>Cozinha - La Casa de Pastel</h2>
+              <h2>Cozinha</h2>
               <p>${isReprint ? 'Reimpressão - ' : ''}${dateStr}</p>
           </div>
           <div class="receipt-senha">SENHA: ${senhaFmt}</div>
@@ -173,7 +190,7 @@ function generateComandaHTML(orderData, isReprint = false) {
   `;
 }
 
-function generateCupomHTML(orderData, isReprint = false) {
+async function generateCupomHTML(orderData, isReprint = false) {
   const dateStr = new Date().toLocaleString('pt-BR');
   const senhaFmt = String(orderData.senha).padStart(3, '0');
   const pag = orderData.pagamento || 'Dinheiro';
@@ -184,20 +201,25 @@ function generateCupomHTML(orderData, isReprint = false) {
 
   let pixQrHTML = '';
   if (orderData.pixPayload) {
-      const qrUrl = pixPayloadToQrUrl(orderData.pixPayload, 200);
-      pixQrHTML = `
-          <div style="text-align:center; border-top:1px dashed black; margin-top:15px; padding-top:15px;">
-              <p style="font-size:11px; font-weight:bold; margin-bottom:6px;">PAGUE VIA PIX</p>
-              <img src="${qrUrl}" alt="QR Code Pix" style="width:160px; height:160px; display:block; margin:0 auto;" />
-              <p style="font-size:10px; margin-top:4px;">Escaneie com o app do seu banco</p>
-          </div>
-      `;
+      const qrDataUrl = await pixPayloadToDataUrl(orderData.pixPayload, 200);
+      if (qrDataUrl) {
+          pixQrHTML = `
+              <div style="text-align:center; border-top:1px dashed black; margin-top:15px; padding-top:15px;">
+                  <p style="font-size:11px; font-weight:bold; margin-bottom:6px;">PAGUE VIA PIX</p>
+                  <img src="${qrDataUrl}" alt="QR Code Pix" style="width:160px; height:160px; display:block; margin:0 auto;" />
+                  <p style="font-size:10px; margin-top:4px;">Escaneie com o app do seu banco</p>
+              </div>
+          `;
+      }
   }
+
+  const customLogo = localStorage.getItem('lacasa_receipt_logo');
+  const logoSrc = customLogo ? customLogo : logoIcon;
 
   return `
       <div class="receipt">
           <div class="receipt-header">
-              <img src="${logoIcon}" alt="${receiptName}" style="width: 130px; height: auto; object-fit: contain; margin: 0 auto 10px auto; display: block;" />
+              <img src="${logoSrc}" alt="${receiptName}" style="width: 130px; height: auto; object-fit: contain; margin: 0 auto 10px auto; display: block;" />
               <p>${isReprint ? 'Reimpressão - ' : ''}${dateStr}</p>
           </div>
           <div class="receipt-senha" style="font-size:20px;">SENHA: ${senhaFmt}</div>

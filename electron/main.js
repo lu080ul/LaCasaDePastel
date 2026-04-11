@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow = null;
 let tvWindow = null;
+let despachoWindow = null;
 
 // ──────────────────────────────────────────────
 // Auto-Updater Configuration
@@ -160,8 +161,64 @@ function openTvDisplay(isManual = false, preferredDisplayId = null) {
   }
 }
 
+// ──────────────────────────────────────────────
+// Despacho Display (Painel do Entregador)
+// ──────────────────────────────────────────────
+function openDespachoDisplay(isManual = false, preferredDisplayId = null) {
+  if (despachoWindow) {
+    despachoWindow.close();
+    despachoWindow = null;
+  }
+
+  const displays = screen.getAllDisplays();
+
+  let displayToUse = displays[0]; // default: monitor principal
+  if (preferredDisplayId) {
+    displayToUse = displays.find(d => d.id === preferredDisplayId) || displayToUse;
+  } else {
+    // Tenta detectar monitor externo
+    const externalDisplay = displays.find(d => d.bounds.x !== 0 || d.bounds.y !== 0);
+    if (externalDisplay) {
+      displayToUse = externalDisplay;
+    }
+  }
+
+  // Se não é manual e não tem monitor externo, não abre
+  if (!isManual) {
+    const hasExternal = displays.some(d => d.bounds.x !== 0 || d.bounds.y !== 0);
+    if (!hasExternal) {
+      console.log("Abertura automática de Despacho abortada. Nenhum segundo display encontrado.");
+      return;
+    }
+  }
+
+  despachoWindow = new BrowserWindow({
+    x: displayToUse.bounds.x,
+    y: displayToUse.bounds.y,
+    width: displayToUse.bounds.width,
+    height: displayToUse.bounds.height,
+    fullscreen: !isManual, // Fullscreen em monitor externo, janela normal se manual no primário
+    title: "La Casa - Painel de Despacho",
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+
+  despachoWindow.removeMenu();
+  despachoWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'despacho' });
+
+  despachoWindow.on('closed', () => {
+    despachoWindow = null;
+  });
+}
+
 ipcMain.on('open-tv-display', (event, displayId) => {
   openTvDisplay(true, displayId); // Chamada manual
+});
+
+ipcMain.on('open-despacho-display', (event, displayId) => {
+  openDespachoDisplay(true, displayId); // Chamada manual
 });
 
 ipcMain.handle('get-displays', () => {
