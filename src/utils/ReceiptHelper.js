@@ -20,13 +20,31 @@ function emvField(id, value) {
 }
 
 export function generatePixBrCode(pixKey, amount, name, city, txid, desc = '') {
-  const safeName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').substring(0, 25).trim();
-  const safeCity = city.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().substring(0, 15).trim();
-  const safeTxid = (txid || '***').replace(/[^a-zA-Z0-9]/g, '').substring(0, 25) || '***';
+  // 1. Sanitização da Chave Pix
+  let cleanKey = pixKey.trim();
+  if (!cleanKey.includes('@')) { 
+      // Remove todos os caracteres não-alfanuméricos (exceto o + se o usuário já tiver colocado)
+      cleanKey = cleanKey.replace(/[^\w+]/g, '');
+  }
+
+  // 2. Formatação conforme padrão EMV (Maiúsculas, sem acentos, caracteres restritos)
+  const cleanEMV = (val, maxLen) => {
+    return (val || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9 ]/g, '')
+      .substring(0, maxLen)
+      .trim();
+  };
+
+  const safeName = cleanEMV(name || 'LA CASA', 25);
+  const safeCity = cleanEMV(city || 'SAO PAULO', 15);
+  const safeTxid = '***'; // Padrão mais compatível para QR Estático em máquinas de cartão e POS
   const safeDesc = desc.substring(0, 40);
 
   let merchantInfo = emvField('00', 'BR.GOV.BCB.PIX');
-  merchantInfo += emvField('01', pixKey);
+  merchantInfo += emvField('01', cleanKey);
   if (safeDesc) merchantInfo += emvField('02', safeDesc);
 
   const additionalData = emvField('05', safeTxid);
@@ -244,7 +262,20 @@ async function generateCupomHTML(orderData, isReprint = false) {
               ` : ''}
           </div>
           <div class="receipt-total">
-              TOTAL: R$ ${orderData.total.toFixed(2)}
+              ${(orderData.discount > 0) ? `
+                <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:normal; margin-bottom:2px;">
+                  <span>Subtotal:</span>
+                  <span>R$ ${orderData.subtotal.toFixed(2)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:normal; margin-bottom:5px;">
+                  <span>Desconto:</span>
+                  <span>- R$ ${orderData.discount.toFixed(2)}</span>
+                </div>
+              ` : ''}
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>TOTAL:</span>
+                <span>R$ ${orderData.total.toFixed(2)}</span>
+              </div>
           </div>
           ${pixQrHTML}
           <div style="text-align:center; margin-top:20px; font-size:12px;">

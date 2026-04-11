@@ -12,6 +12,7 @@ const PosArea = () => {
   const [paymentMethod, setPaymentMethod] = useState(() => loadFromStorage('lacasa_current_payment', 'Dinheiro'));
   const [payAmount, setPayAmount] = useState(() => loadFromStorage('lacasa_current_payamt', ''));
   const [orderObservation, setOrderObservation] = useState(() => loadFromStorage('lacasa_current_obs', ''));
+  const [discount, setDiscount] = useState(() => parseFloat(loadFromStorage('lacasa_current_discount', '0') || '0'));
   const [editingItem, setEditingItem] = useState(null); // { cartItemId, observation, addons }
 
   // Persistir estado do carrinho e formulário no localStorage
@@ -19,6 +20,7 @@ const PosArea = () => {
   useEffect(() => { saveToStorage('lacasa_current_payment', paymentMethod); }, [paymentMethod]);
   useEffect(() => { saveToStorage('lacasa_current_payamt', payAmount); }, [payAmount]);
   useEffect(() => { saveToStorage('lacasa_current_obs', orderObservation); }, [orderObservation]);
+  useEffect(() => { saveToStorage('lacasa_current_discount', discount.toString()); }, [discount]);
 
   // Lógica de adicionar ao carrinho
   const addToCart = (product) => {
@@ -69,7 +71,8 @@ const PosArea = () => {
   };
 
   const cartTotal = cart.reduce((acc, item) => acc + (getItemUnitPrice(item) * item.qty), 0);
-  const change = paymentMethod === 'Dinheiro' ? (parseFloat(payAmount || 0) - cartTotal) : 0;
+  const finalTotal = Math.max(0, cartTotal - discount);
+  const change = paymentMethod === 'Dinheiro' ? (parseFloat(payAmount || 0) - finalTotal) : 0;
 
   const finalizeSale = async () => {
     if (cart.length === 0) {
@@ -79,7 +82,7 @@ const PosArea = () => {
 
     if (paymentMethod === 'Dinheiro') {
       const paid = parseFloat(payAmount || 0);
-      if (paid < cartTotal) {
+      if (paid < finalTotal) {
         alert("O valor pago em dinheiro é menor que o total do pedido!");
         return;
       }
@@ -108,13 +111,15 @@ const PosArea = () => {
       if (pixKey) {
         const mercName = localStorage.getItem('lacasa_merchant_name') || 'La Casa de Pastel';
         const mercCity = localStorage.getItem('lacasa_merchant_city') || 'SAO PAULO';
-        pixPayload = generatePixBrCode(pixKey, cartTotal, mercName, mercCity, 'LACASA' + Date.now());
+        pixPayload = generatePixBrCode(pixKey, finalTotal, mercName, mercCity, 'LACASA' + Date.now());
       }
     }
 
     const newOrder = {
       items: [...cart],
-      total: cartTotal,
+      subtotal: cartTotal,
+      discount: discount,
+      total: finalTotal,
       senha: currentOrderNumber,
       pagamento: paymentMethod,
       troco: change >= 0 ? change : 0,
@@ -125,13 +130,14 @@ const PosArea = () => {
     };
 
     setSalesHistory([newOrder, ...salesHistory]);
-    setShiftSales({ count: shiftSales.count + 1, total: shiftSales.total + cartTotal });
+    setShiftSales({ count: shiftSales.count + 1, total: shiftSales.total + finalTotal });
     setCurrentOrderNumber(prev => prev + 1);
     
     setCart([]);
     setPayAmount('');
     setPaymentMethod('Dinheiro');
     setOrderObservation('');
+    setDiscount(0);
     
     // Imprime sequencialmente Comanda e Cupom
     await printSequentialReceipts(newOrder);
@@ -271,10 +277,28 @@ const PosArea = () => {
                 </div>
              </div>
            )}
+           {/* Discount & Change Section */}
+           <div className="space-y-2 mb-4">
+              <div className="bg-lacasa-bg/50 border border-white/5 rounded-2xl p-4 flex justify-between items-center group focus-within:border-lacasa-primary/50 transition-colors">
+                  <span className="text-gray-400 font-bold group-focus-within:text-lacasa-primary transition-colors text-sm">Desconto</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 font-mono text-sm">R$</span>
+                    <input 
+                      type="number" 
+                      value={discount || ''} 
+                      onChange={e => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="bg-lacasa-panel border border-white/10 rounded-xl px-3 py-1 w-24 text-right font-mono text-lg outline-none focus:border-lacasa-primary transition-colors text-white"
+                      placeholder="0,00"
+                    />
+                  </div>
+              </div>
 
-           <div className="flex justify-between items-center font-bold text-lg text-gray-400 mb-2">
-             <span>Troco</span>
-             <span className="font-mono">R$ {(change > 0 ? change : 0).toFixed(2)}</span>
+              <div className="flex justify-between items-center px-4 font-bold text-lg text-gray-400">
+                <span className="text-sm uppercase tracking-wider opacity-60">Troco a devolver</span>
+                <span className={`font-mono ${change > 0 ? 'text-lacasa-success' : ''}`}>
+                  R$ {(change > 0 ? change : 0).toFixed(2)}
+                </span>
+              </div>
            </div>
 
            {/* General Observation */}
@@ -291,9 +315,12 @@ const PosArea = () => {
               />
            </div>
 
-           <div className="flex justify-between items-center font-black text-3xl text-lacasa-success mb-6">
-             <span>Total</span>
-             <span className="font-mono tracking-tighter">R$ {cartTotal.toFixed(2)}</span>
+           <div className="flex justify-between items-center font-black text-3xl text-lacasa-success mb-6 border-t border-lacasa-border pt-4">
+             <div className="flex flex-col">
+                {discount > 0 && <span className="text-xs text-gray-500 line-through font-mono">R$ {cartTotal.toFixed(2)}</span>}
+                <span>Total</span>
+             </div>
+             <span className="font-mono tracking-tighter">R$ {finalTotal.toFixed(2)}</span>
            </div>
            
            <button 
