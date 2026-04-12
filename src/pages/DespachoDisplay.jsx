@@ -1,18 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store/Store';
 import { PackageCheck, BellRing, ChefHat, CheckCircle2, ArrowRight, Clock } from 'lucide-react';
 import logoIcon from '../assets/logotipo.jpg';
 
+const CALL_COOLDOWN_MS = 15000; // 15 seconds
+
 const DespachoDisplay = () => {
   const { salesHistory, setSalesHistory } = useAppContext();
-  const [dispatching, setDispatching] = useState(false);
+  const [callTimers, setCallTimers] = useState({});
+  const [, forceUpdate] = useState(0);
+
+  // Tick for timer re-render
+  useEffect(() => {
+    const interval = setInterval(() => forceUpdate(n => n + 1), 250);
+    return () => clearInterval(interval);
+  }, []);
 
   const preparando = (salesHistory || [])
-    .filter(s => s.status === 'preparando')
+    .filter(s => s.status === 'preparando' && !s.noSenha)
     .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
   const pronto = (salesHistory || [])
-    .filter(s => s.status === 'pronto')
+    .filter(s => s.status === 'pronto' && !s.noSenha)
     .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
   const changeStatus = (id, newStatus) => {
@@ -21,24 +30,33 @@ const DespachoDisplay = () => {
     ));
   };
 
+  const dispatchOrder = (id) => {
+    setSalesHistory((salesHistory || []).map(sale =>
+      sale.senha === id ? { ...sale, status: 'entregue' } : sale
+    ));
+  };
+
   const callAgain = (id) => {
     setSalesHistory((salesHistory || []).map(sale =>
       sale.senha === id ? { ...sale, callAgainAt: Date.now() } : sale
     ));
+    setCallTimers(prev => ({ ...prev, [id]: Date.now() + CALL_COOLDOWN_MS }));
   };
 
-  const dispatchAllReady = () => {
-    if (pronto.length === 0) return;
-    setDispatching(true);
-    setSalesHistory((salesHistory || []).map(sale =>
-      sale.status === 'pronto' ? { ...sale, status: 'entregue' } : sale
-    ));
-    setTimeout(() => setDispatching(false), 1200);
+  const getCallProgress = (senha) => {
+    const expiresAt = callTimers[senha];
+    if (!expiresAt) return null;
+    const now = Date.now();
+    if (now >= expiresAt) return null;
+    return (expiresAt - now) / CALL_COOLDOWN_MS;
   };
 
   /* ─── Card de pedido ─── */
   const OrderCard = ({ order, variant }) => {
     const isReady = variant === 'pronto';
+    const callProgress = getCallProgress(order.senha);
+    const isCalling = callProgress !== null;
+
     return (
       <div style={{
         borderRadius: '1.5rem',
@@ -137,29 +155,74 @@ const DespachoDisplay = () => {
               <CheckCircle2 size={20} /> Pronto
             </button>
           ) : (
-            <button
-              onClick={() => callAgain(order.senha)}
-              style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem',
-                borderRadius: '1rem',
-                border: '1px solid rgba(245,158,11,0.4)',
-                background: 'rgba(245,158,11,0.15)',
-                color: '#f59e0b',
-                fontWeight: 800,
-                fontSize: '1rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#f59e0b'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.15)'; e.currentTarget.style.color = '#f59e0b'; }}
-            >
-              <BellRing size={18} /> Chamar Novamente
-            </button>
+            <>
+              {/* Chamar com animação de cooldown */}
+              <button
+                onClick={() => !isCalling && callAgain(order.senha)}
+                disabled={isCalling}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  padding: '0.75rem',
+                  borderRadius: '1rem',
+                  border: '1px solid rgba(245,158,11,0.4)',
+                  background: 'rgba(245,158,11,0.15)',
+                  color: isCalling ? 'rgba(245,158,11,0.5)' : '#f59e0b',
+                  fontWeight: 800,
+                  fontSize: '1rem',
+                  cursor: isCalling ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+                onMouseEnter={e => { if (!isCalling) { e.currentTarget.style.background = '#f59e0b'; e.currentTarget.style.color = '#fff'; }}}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.15)'; e.currentTarget.style.color = isCalling ? 'rgba(245,158,11,0.5)' : '#f59e0b'; }}
+              >
+                {/* Cooldown progress overlay */}
+                {isCalling && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    bottom: 0,
+                    width: `${callProgress * 100}%`,
+                    background: 'rgba(245,158,11,0.15)',
+                    borderRadius: '1rem',
+                    transition: 'width 0.25s linear',
+                  }} />
+                )}
+                <BellRing size={18} style={{ position: 'relative', zIndex: 1, ...(isCalling ? { animation: 'ring 0.5s ease-in-out' } : {}) }} />
+                <span style={{ position: 'relative', zIndex: 1 }}>{isCalling ? 'Chamando...' : 'Chamar'}</span>
+              </button>
+
+              {/* Botão Despachar individual */}
+              <button
+                onClick={() => dispatchOrder(order.senha)}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  padding: '0.75rem',
+                  borderRadius: '1rem',
+                  border: '1px solid rgba(16,185,129,0.4)',
+                  background: 'rgba(16,185,129,0.15)',
+                  color: '#10b981',
+                  fontWeight: 800,
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#10b981'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.15)'; e.currentTarget.style.color = '#10b981'; }}
+              >
+                <PackageCheck size={18} /> Despachar
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -199,50 +262,6 @@ const DespachoDisplay = () => {
             </span>
           </div>
         </div>
-
-        {/* Botão Despachar Todos */}
-        <button
-          onClick={dispatchAllReady}
-          disabled={pronto.length === 0}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.6rem',
-            padding: '0.85rem 1.5rem',
-            borderRadius: '999px',
-            border: pronto.length === 0 ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(16,185,129,0.4)',
-            background: pronto.length === 0 ? 'rgba(255,255,255,0.03)' : dispatching ? '#10b981' : 'rgba(16,185,129,0.15)',
-            color: pronto.length === 0 ? 'rgba(255,255,255,0.2)' : dispatching ? '#fff' : '#10b981',
-            fontWeight: 800,
-            fontSize: '1.1rem',
-            cursor: pronto.length === 0 ? 'not-allowed' : 'pointer',
-            transition: 'all 0.3s ease',
-            position: 'relative',
-          }}
-        >
-          <PackageCheck size={22} style={dispatching ? { animation: 'bounce 0.5s ease infinite alternate' } : {}} />
-          {dispatching ? 'Despachando...' : 'Despachar Todos'}
-          {pronto.length > 0 && !dispatching && (
-            <span style={{
-              position: 'absolute',
-              top: '-0.5rem',
-              right: '-0.5rem',
-              width: '1.6rem',
-              height: '1.6rem',
-              borderRadius: '999px',
-              background: '#10b981',
-              color: '#fff',
-              fontSize: '0.75rem',
-              fontWeight: 900,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(16,185,129,0.5)',
-            }}>
-              {pronto.length}
-            </span>
-          )}
-        </button>
       </header>
 
       {/* Corpo — duas colunas */}
@@ -331,11 +350,20 @@ const DespachoDisplay = () => {
 
       </main>
 
-      {/* Inline animation keyframe */}
+      {/* Inline animation keyframes */}
       <style>{`
         @keyframes bounce {
           from { transform: translateY(0); }
           to { transform: translateY(-4px); }
+        }
+        @keyframes ring {
+          0% { transform: rotate(0deg); }
+          15% { transform: rotate(14deg); }
+          30% { transform: rotate(-14deg); }
+          45% { transform: rotate(10deg); }
+          60% { transform: rotate(-10deg); }
+          75% { transform: rotate(4deg); }
+          100% { transform: rotate(0deg); }
         }
       `}</style>
     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { loadFromStorage, saveToStorage } from '../utils/LocalStorage';
 import { useAppContext } from '../store/Store';
-import { Search, Plus, Minus, Trash2, CheckCircle2, DollarSign, CreditCard, Menu, ShoppingCart, MessageSquare, Edit } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, CheckCircle2, DollarSign, CreditCard, Menu, ShoppingCart, MessageSquare, Edit, EyeOff, Eye } from 'lucide-react';
 import { generatePixBrCode, printSequentialReceipts } from '../utils/ReceiptHelper';
 
 const PosArea = () => {
@@ -13,6 +13,7 @@ const PosArea = () => {
   const [payAmount, setPayAmount] = useState(() => loadFromStorage('lacasa_current_payamt', ''));
   const [orderObservation, setOrderObservation] = useState(() => loadFromStorage('lacasa_current_obs', ''));
   const [discount, setDiscount] = useState(() => parseFloat(loadFromStorage('lacasa_current_discount', '0') || '0'));
+  const [noSenha, setNoSenha] = useState(false);
   const [editingItem, setEditingItem] = useState(null); // { cartItemId, observation, addons }
 
   // Persistir estado do carrinho e formulário no localStorage
@@ -125,7 +126,8 @@ const PosArea = () => {
       troco: change >= 0 ? change : 0,
       pixPayload: pixPayload,
       observation: orderObservation,
-      status: 'preparando',
+      noSenha: noSenha,
+      status: noSenha ? 'entregue' : 'preparando',
       timestamp: Date.now()
     };
 
@@ -138,6 +140,7 @@ const PosArea = () => {
     setPaymentMethod('Dinheiro');
     setOrderObservation('');
     setDiscount(0);
+    setNoSenha(false);
     
     // Imprime sequencialmente Comanda e Cupom
     await printSequentialReceipts(newOrder);
@@ -262,6 +265,19 @@ const PosArea = () => {
                 </button>
               ))}
            </div>
+
+           {/* Sem Senha Toggle */}
+           <button
+             onClick={() => setNoSenha(!noSenha)}
+             className={`w-full py-2.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 mb-4 transition-all border ${
+               noSenha
+                 ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 shadow-[inset_0_0_20px_rgba(168,85,247,0.15)]'
+                 : 'bg-lacasa-bg/50 border-white/5 text-gray-500 hover:bg-lacasa-bg hover:text-gray-400'
+             }`}
+           >
+             {noSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+             {noSenha ? 'Sem Senha — Não vai para o painel' : 'Com Senha (padrão)'}
+           </button>
            
            {paymentMethod === 'Dinheiro' && (
              <div className="bg-lacasa-bg/50 border border-white/5 rounded-2xl p-4 mb-4 flex justify-between items-center">

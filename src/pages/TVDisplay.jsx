@@ -10,8 +10,8 @@ const TVDisplay = () => {
   const audioCtxRef = useRef(null);
   const processedSenhas = useRef(new Set());
 
-  const preparando = salesHistory.filter(s => s.status === 'preparando').slice(0, 12);
-  const pronto     = salesHistory.filter(s => s.status === 'pronto').slice(0, 12);
+  const preparando = salesHistory.filter(s => s.status === 'preparando' && !s.noSenha).slice(0, 12);
+  const pronto     = salesHistory.filter(s => s.status === 'pronto' && !s.noSenha).slice(0, 12);
 
   const initAudioIfNeeded = () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;

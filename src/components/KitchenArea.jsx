@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '../store/Store';
 import { ChefHat, Check, Trash2, ArrowRight, CheckCircle2, BellRing, PackageCheck, Edit } from 'lucide-react';
 import OrderEditModal from './OrderEditModal';
 
+const CALL_COOLDOWN_MS = 15000; // 15 seconds cooldown for "Chamar" button
+
 const KitchenArea = () => {
   const { salesHistory, setSalesHistory } = useAppContext();
-  const [dispatching, setDispatching] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
+  const [callTimers, setCallTimers] = useState({}); // { [senha]: expiresAt }
+  const [, forceUpdate] = useState(0); // tick for timer re-render
+
+  // Tick every second to update the call timer progress bars
+  useEffect(() => {
+    const interval = setInterval(() => forceUpdate(n => n + 1), 250);
+    return () => clearInterval(interval);
+  }, []);
 
   const changeStatus = (id, newStatus) => {
     setSalesHistory(salesHistory.map(sale => 
@@ -14,27 +23,30 @@ const KitchenArea = () => {
     ));
   };
 
+  const dispatchOrder = (id) => {
+    setSalesHistory(salesHistory.map(sale =>
+      sale.senha === id ? { ...sale, status: 'entregue' } : sale
+    ));
+  };
+
   const callAgain = (id) => {
     setSalesHistory((salesHistory || []).map(sale =>
       sale.senha === id ? { ...sale, callAgainAt: Date.now() } : sale
     ));
+    // Set cooldown timer
+    setCallTimers(prev => ({ ...prev, [id]: Date.now() + CALL_COOLDOWN_MS }));
   };
 
-  // Despachar TODOS os pedidos que estão "pronto"
-  const dispatchAllReady = () => {
-    const readyCount = (salesHistory || []).filter(s => s.status === 'pronto').length;
-    if (readyCount === 0) return;
-    setDispatching(true);
-    setSalesHistory((salesHistory || []).map(sale =>
-      sale.status === 'pronto' ? { ...sale, status: 'entregue' } : sale
-    ));
-    setTimeout(() => setDispatching(false), 1200);
+  const getCallProgress = (senha) => {
+    const expiresAt = callTimers[senha];
+    if (!expiresAt) return null;
+    const now = Date.now();
+    if (now >= expiresAt) return null;
+    return (expiresAt - now) / CALL_COOLDOWN_MS; // 1.0 → 0.0
   };
-
-  const readyCount = (salesHistory || []).filter(s => s.status === 'pronto').length;
 
   const activeOrders = (salesHistory || [])
-    .filter(s => s.status === 'preparando' || s.status === 'pronto')
+    .filter(s => (s.status === 'preparando' || s.status === 'pronto') && !s.noSenha)
     .sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
 
   return (
@@ -51,27 +63,6 @@ const KitchenArea = () => {
             <span className="text-gray-400 font-medium">Controle da Fila de Preparo</span>
           </div>
         </div>
-        
-        {/* Botão Despachar Todos os Prontos */}
-        <button 
-          onClick={dispatchAllReady}
-          disabled={readyCount === 0}
-          className={`magnetic-btn relative px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-all border 
-            ${readyCount === 0 
-              ? 'bg-white/5 text-gray-600 border-white/5 cursor-not-allowed' 
-              : dispatching
-                ? 'bg-lacasa-success text-white border-emerald-400/50 scale-95'
-                : 'bg-lacasa-success/20 text-lacasa-success hover:bg-lacasa-success hover:text-white border-lacasa-success/30'
-            }`}
-        >
-          <PackageCheck className={`w-5 h-5 ${dispatching ? 'animate-bounce' : ''}`} />
-          {dispatching ? 'Despachando...' : 'Despachar Todos'}
-          {readyCount > 0 && !dispatching && (
-            <span className="absolute -top-2 -right-2 w-6 h-6 bg-lacasa-success text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/50">
-              {readyCount}
-            </span>
-          )}
-        </button>
       </div>
 
       <div className="flex-1 overflow-auto bg-lacasa-bg/50 border border-white/5 rounded-2xl relative">
@@ -87,11 +78,15 @@ const KitchenArea = () => {
                   <th className="px-6 py-4 w-24">Senha</th>
                   <th className="px-6 py-4">Itens</th>
                   <th className="px-6 py-4 w-32">Status</th>
-                  <th className="px-6 py-4 w-48 text-right">Ação</th>
+                  <th className="px-6 py-4 w-64 text-right">Ação</th>
                 </tr>
               </thead>
               <tbody>
-                {activeOrders.map(order => (
+                {activeOrders.map(order => {
+                  const callProgress = getCallProgress(order.senha);
+                  const isCalling = callProgress !== null;
+
+                  return (
                   <tr key={order.senha} className={`border-t border-white/5 transition-colors ${order.status === 'pronto' ? 'bg-lacasa-success/5 hover:bg-lacasa-success/10' : 'hover:bg-white/5'}`}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -135,13 +130,45 @@ const KitchenArea = () => {
                            <CheckCircle2 className="w-5 h-5"/> Pronto
                          </button>
                        ) : (
-                         <button onClick={() => callAgain(order.senha)} title="Chamar novamente na TV" className="bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white border border-amber-500/30 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition-all ml-auto">
-                           <BellRing className="w-4 h-4"/> Chamar
-                         </button>
+                         <div className="flex items-center gap-2 justify-end">
+                           {/* Chamar novamente com animação de cooldown */}
+                           <button 
+                             onClick={() => !isCalling && callAgain(order.senha)} 
+                             title="Chamar novamente na TV" 
+                             disabled={isCalling}
+                             className={`relative overflow-hidden font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition-all border ${
+                               isCalling
+                                 ? 'bg-amber-500/10 text-amber-500/60 border-amber-500/20 cursor-not-allowed'
+                                 : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white border-amber-500/30'
+                             }`}
+                           >
+                             {/* Progress bar overlay */}
+                             {isCalling && (
+                               <div 
+                                 className="absolute inset-0 bg-amber-500/15 rounded-xl transition-none"
+                                 style={{ 
+                                   width: `${(callProgress) * 100}%`,
+                                   transition: 'width 0.25s linear'
+                                 }}
+                               />
+                             )}
+                             <BellRing className={`w-4 h-4 relative z-10 ${isCalling ? 'animate-[ring_0.5s_ease-in-out]' : ''}`}/>
+                             <span className="relative z-10">{isCalling ? 'Chamando...' : 'Chamar'}</span>
+                           </button>
+
+                           {/* Botão Despachar individual */}
+                           <button 
+                             onClick={() => dispatchOrder(order.senha)} 
+                             className="bg-lacasa-success/20 text-lacasa-success hover:bg-lacasa-success hover:text-white font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition-all border border-lacasa-success/30"
+                           >
+                             <PackageCheck className="w-4 h-4"/> Despachar
+                           </button>
+                         </div>
                        )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
            </table>
          )}
@@ -151,6 +178,19 @@ const KitchenArea = () => {
       {editingOrder && (
         <OrderEditModal order={editingOrder} onClose={() => setEditingOrder(null)} />
       )}
+
+      {/* Keyframe for bell ring animation */}
+      <style>{`
+        @keyframes ring {
+          0% { transform: rotate(0deg); }
+          15% { transform: rotate(14deg); }
+          30% { transform: rotate(-14deg); }
+          45% { transform: rotate(10deg); }
+          60% { transform: rotate(-10deg); }
+          75% { transform: rotate(4deg); }
+          100% { transform: rotate(0deg); }
+        }
+      `}</style>
     </div>
   );
 };

@@ -20,11 +20,21 @@ function emvField(id, value) {
 }
 
 export function generatePixBrCode(pixKey, amount, name, city, txid, desc = '') {
-  // 1. Sanitização da Chave Pix
+  // 1. Sanitização da Chave Pix — detecção automática do tipo
   let cleanKey = pixKey.trim();
-  if (!cleanKey.includes('@')) { 
-      // Remove todos os caracteres não-alfanuméricos (exceto o + se o usuário já tiver colocado)
-      cleanKey = cleanKey.replace(/[^\w+]/g, '');
+
+  if (cleanKey.includes('@')) {
+    // E-mail: apenas trim, preservar case (e-mails PIX são case-insensitive mas mantemos original)
+    cleanKey = cleanKey.toLowerCase();
+  } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanKey)) {
+    // Chave aleatória UUID — preservar hifens e lowercase
+    cleanKey = cleanKey.toLowerCase();
+  } else if (cleanKey.startsWith('+')) {
+    // Telefone com +55 — manter apenas dígitos e o +
+    cleanKey = '+' + cleanKey.replace(/[^0-9]/g, '');
+  } else {
+    // CPF/CNPJ ou telefone sem + — manter apenas dígitos
+    cleanKey = cleanKey.replace(/[^0-9]/g, '');
   }
 
   // 2. Formatação conforme padrão EMV (Maiúsculas, sem acentos, caracteres restritos)
@@ -40,26 +50,30 @@ export function generatePixBrCode(pixKey, amount, name, city, txid, desc = '') {
 
   const safeName = cleanEMV(name || 'LA CASA', 25);
   const safeCity = cleanEMV(city || 'SAO PAULO', 15);
-  const safeTxid = '***'; // Padrão mais compatível para QR Estático em máquinas de cartão e POS
+  const safeTxid = '***'; // Padrão mais compatível para QR Estático
   const safeDesc = desc.substring(0, 40);
 
+  // 3. Merchant Account Information (ID 26)
   let merchantInfo = emvField('00', 'BR.GOV.BCB.PIX');
   merchantInfo += emvField('01', cleanKey);
   if (safeDesc) merchantInfo += emvField('02', safeDesc);
 
+  // 4. Additional Data Field (ID 62)
   const additionalData = emvField('05', safeTxid);
 
+  // 5. Montar payload EMV-QRCPS conforme especificação BR Code do BACEN
   let payload = '';
-  payload += emvField('00', '01');
-  payload += emvField('26', merchantInfo);
-  payload += emvField('52', '0000');
-  payload += emvField('53', '986');
-  payload += emvField('54', amount.toFixed(2));
-  payload += emvField('58', 'BR');
-  payload += emvField('59', safeName);
-  payload += emvField('60', safeCity);
-  payload += emvField('62', additionalData);
-  payload += '6304';
+  payload += emvField('00', '01');        // Payload Format Indicator (obrigatório)
+  payload += emvField('01', '12');        // Point of Initiation Method: 12 = QR Estático (OBRIGATÓRIO!)
+  payload += emvField('26', merchantInfo);// Merchant Account Information
+  payload += emvField('52', '0000');      // Merchant Category Code
+  payload += emvField('53', '986');       // Transaction Currency (BRL)
+  payload += emvField('54', amount.toFixed(2)); // Transaction Amount
+  payload += emvField('58', 'BR');        // Country Code
+  payload += emvField('59', safeName);    // Merchant Name
+  payload += emvField('60', safeCity);    // Merchant City
+  payload += emvField('62', additionalData); // Additional Data Field
+  payload += '6304';                      // CRC16 placeholder (ID 63, len 04)
 
   payload += crc16(payload);
   return payload;
