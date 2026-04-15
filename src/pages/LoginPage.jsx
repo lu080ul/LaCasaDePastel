@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, AlertCircle, Loader2, Store } from 'lucide-react';
 import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
-import { auth, isFirebaseConfigured } from '../../firebase/config';
+import { auth, isFirebaseConfigured } from '../firebase/config';
 
 const LoginPage = () => {
   const navigate = useNavigate();

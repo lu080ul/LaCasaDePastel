@@ -28,7 +28,7 @@ const AdminLogin = ({ onLogin }) => {
               <li>Crie um projeto no <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" className="text-lacasa-primary hover:underline">Firebase Console</a></li>
               <li>Copie <code className="bg-white/10 px-1 rounded">.env.example</code> para <code className="bg-white/10 px-1 rounded">.env</code></li>
               <li>Preencha as credenciais do Firebase</li>
-              <li>Habilite Authentication > Email/Password</li>
+              <li>Habilite Authentication {'>'} Email/Password</li>
               <li>Crie um usuário admin</li>
             </ol>
           </div>
