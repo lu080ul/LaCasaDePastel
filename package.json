@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Sistema PDV La Casa - Pedidos e Despacho",
   "author": "La Casa de Pastel <contato@lacasa.com>",
   "homepage": "https://github.com/lu080ul/LaCasaDePastel",
