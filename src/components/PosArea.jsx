@@ -3,6 +3,7 @@ import { loadFromStorage, saveToStorage } from '../utils/LocalStorage';
 import { useAppContext } from '../store/Store';
 import { Search, Plus, Minus, Trash2, CheckCircle2, DollarSign, CreditCard, Menu, ShoppingCart, MessageSquare, Edit, EyeOff, Eye } from 'lucide-react';
 import { generatePixBrCode, printSequentialReceipts } from '../utils/ReceiptHelper';
+import { getCurrentOperator } from './OperatorSelector';
 
 const PosArea = () => {
   const { products, setProducts, salesHistory, setSalesHistory, currentOrderNumber, setCurrentOrderNumber, shiftSales, setShiftSales } = useAppContext();
@@ -128,7 +129,8 @@ const PosArea = () => {
       observation: orderObservation,
       noSenha: noSenha,
       status: noSenha ? 'entregue' : 'preparando',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      operador: getCurrentOperator()
     };
 
     setSalesHistory([newOrder, ...salesHistory]);

@@ -4,19 +4,18 @@ import { AppProvider } from './store/Store';
 import PDV from './pages/PDV';
 import TVDisplay from './pages/TVDisplay';
 import DespachoDisplay from './pages/DespachoDisplay';
+import AdminPage from './components/admin/AdminPage';
+import LoginPage from './pages/LoginPage';
 
 function App() {
   return (
     <AppProvider>
       <Routes>
-        {/* PDV Main Route - Handles all internal tabs like Pos, Inventory, etc. */}
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<PDV />} />
-        
-        {/* TV Display Route - Cinematic TV Screen */}
         <Route path="/tv" element={<TVDisplay />} />
-
-        {/* Despacho Display Route - Delivery Panel for second monitor */}
         <Route path="/despacho" element={<DespachoDisplay />} />
+        <Route path="/admin" element={<AdminPage />} />
       </Routes>
     </AppProvider>
   );
